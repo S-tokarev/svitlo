@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Svitlo" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#F4F0E6</item>
+        <item name="android:navigationBarColor">#F4F0E6</item>
+        <item name="android:windowBackground">#F4F0E6</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

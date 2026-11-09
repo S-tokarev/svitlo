@@ -1,0 +1,345 @@
+import SwiftUI
+
+struct MainView: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
+
+    private var palette: SvitloPalette { SvitloPalette.resolve(model.theme, systemDark: colorScheme == .dark) }
+    private var nowMs: Int64 { ScheduleMath.millis(model.now) }
+    private var picture: PowerPicture? {
+        guard let snapshot = model.snapshot, !model.selection.group.isEmpty else { return nil }
+        return ScheduleMath.picture(snapshot: snapshot, selection: model.selection, now: nowMs)
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                header
+                statusCard
+                if let note = model.snapshot?.note, !note.isEmpty { noteCard(note) }
+                if let error = model.error { errorCard(error) }
+                schedule
+                groups
+                address
+                appearance
+                notifications
+                Button("График на сайте") { openURL(SvitloClient.page(for: model.selection.group)) }
+                    .font(.subheadline)
+                    .foregroundStyle(palette.accent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(16)
+        }
+        .background(palette.paper.ignoresSafeArea())
+        .onReceive(NotificationCenter.default.publisher(for: .svitloUpdated)) { _ in
+            model.applyExternalUpdate()
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            Text("Светло")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundStyle(palette.ink)
+            Spacer()
+            if model.loading { ProgressView().tint(palette.accent) }
+            Button(model.loading ? "Обновляем…" : "Обновить") { Task { await model.refresh() } }
+                .buttonStyle(.borderedProminent)
+                .tint(palette.accent)
+                .disabled(model.loading)
+        }
+    }
+
+    private var statusCard: some View {
+        let hint = nextHint(picture, nowMs)
+        let on = picture?.displayOn
+        let color = on == true ? palette.powerOnText : on == false ? palette.powerOffText : palette.ink
+        let title = on == true ? "Свет есть" : on == false ? "Света нет" : (model.selection.group.isEmpty ? "Выберите группу" : "Нет данных")
+        return card {
+            Text(heading)
+                .font(.caption)
+                .foregroundStyle(palette.muted)
+            Text(title)
+                .font(.system(size: 36, weight: .bold))
+                .foregroundStyle(color)
+            if !model.selection.group.isEmpty && on != nil {
+                Text("По графику, без датчика в доме")
+                    .font(.caption)
+                    .foregroundStyle(palette.muted)
+            }
+            Text(hint.whenText)
+                .font(.body)
+                .foregroundStyle(palette.ink)
+            if let duration = hint.duration {
+                Text(duration)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(color)
+            }
+            if let fetched = model.snapshot?.fetchedAt, fetched > 0 {
+                Text("Обновлено \(ScheduleMath.formatDayTime(fetched, now: nowMs))")
+                    .font(.caption)
+                    .foregroundStyle(palette.muted)
+            }
+        }
+    }
+
+    private var heading: String {
+        if let place = model.selection.placeLabel { return "\(place) · группа \(model.selection.group)" }
+        if model.selection.group.isEmpty { return "Группа не выбрана" }
+        return "Группа \(model.selection.group)"
+    }
+
+    @ViewBuilder private var schedule: some View {
+        if let picture, !picture.outagesToday.isEmpty || picture.plannedOn != nil {
+            DayTrack(
+                title: picture.scheduleLabel.isEmpty ? "Сегодня" : picture.scheduleLabel,
+                outages: picture.outagesToday,
+                nowMin: ScheduleMath.minuteOfDay(nowMs),
+                palette: palette
+            )
+        } else if !model.selection.group.isEmpty && model.snapshot != nil {
+            quiet("На сегодня для этой группы графика на сайте нет.")
+        }
+        if let picture, !picture.outagesTomorrow.isEmpty {
+            DayTrack(title: "Завтра", outages: picture.outagesTomorrow, nowMin: nil, palette: palette)
+        } else if model.snapshot?.days.contains(where: { $0.day == "tomorrow" && $0.groups[model.selection.group] != nil }) == true {
+            DayTrack(title: "Завтра", outages: [], nowMin: nil, palette: palette)
+        } else if model.snapshot != nil && !model.selection.group.isEmpty {
+            quiet("Графика на завтра для этой группы ещё нет.")
+        }
+    }
+
+    private var groups: some View {
+        let items = ScheduleMath.knownGroups(model.snapshot)
+        return card {
+            Text("Группа").font(.headline).foregroundStyle(palette.ink)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                ForEach(items, id: \.self) { group in
+                    let selected = group == model.selection.group
+                    let on = model.snapshot.flatMap { ScheduleMath.picture(snapshot: $0, selection: Selection(group: group), now: nowMs).displayOn }
+                    Button(group) { model.selectGroup(group) }
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(chipColor(selected: selected, on: on), in: RoundedRectangle(cornerRadius: 12))
+                        .foregroundStyle(selected ? palette.ink : palette.muted)
+                }
+            }
+        }
+    }
+
+    private var address: some View {
+        card {
+            Text("Адрес").font(.headline).foregroundStyle(palette.ink)
+            Text("По всей Киевской области. Адрес только выбирает группу, свет считается по графику.")
+                .font(.caption)
+                .foregroundStyle(palette.muted)
+            TextField("Улица и дом, например Буча Шевченка 11", text: $model.query)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(12)
+                .background(palette.field, in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(palette.line))
+            Button(model.searching ? "Ищем…" : "Найти группу") { Task { await model.search() } }
+                .buttonStyle(.bordered)
+                .disabled(model.searching)
+            if let searchError = model.searchError {
+                Text(searchError).font(.caption).foregroundStyle(palette.muted)
+            }
+            ForEach(model.results.prefix(40)) { hit in
+                Button {
+                    Task { await model.pick(hit) }
+                } label: {
+                    Text(hit.group.isEmpty ? "\(hit.city), \(hit.street)" : "\(hit.label)  ·  группа \(hit.group)")
+                        .font(.subheadline)
+                        .foregroundStyle(palette.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(palette.card2, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+        }
+    }
+
+    private var appearance: some View {
+        card {
+            Text("Оформление").font(.headline).foregroundStyle(palette.ink)
+            HStack {
+                ForEach(ThemeMode.allCases) { mode in
+                    Button(mode.title) { model.setTheme(mode) }
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(model.theme == mode ? palette.card2 : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+                        .foregroundStyle(model.theme == mode ? palette.ink : palette.muted)
+                }
+            }
+        }
+    }
+
+    private var notifications: some View {
+        card {
+            Text("Уведомления").font(.headline).foregroundStyle(palette.ink)
+            toggle("За 10 минут до отключения", model.warnEnabled) { model.setWarn($0) }
+            toggle("Когда по графику включат свет", model.notifyOn) { model.setNotify($0) }
+            toggle("Не беспокоить ночью", model.quietNight) { model.setQuiet($0) }
+            Text("С 23:00 до 07:00 по Киеву уведомления не приходят.")
+                .font(.caption)
+                .foregroundStyle(palette.muted)
+        }
+    }
+
+    private func toggle(_ title: String, _ value: Bool, _ set: @escaping (Bool) -> Void) -> some View {
+        Toggle(title, isOn: Binding(get: { value }, set: set))
+            .font(.subheadline)
+            .foregroundStyle(palette.ink)
+            .tint(palette.accent)
+    }
+
+    private func noteCard(_ note: String) -> some View {
+        card {
+            Text("Сообщение оператора").font(.caption.weight(.semibold)).foregroundStyle(palette.amber)
+            Text(note).foregroundStyle(palette.ink)
+        }
+    }
+
+    private func errorCard(_ text: String) -> some View {
+        card { Text(text).foregroundStyle(palette.powerOffText) }
+    }
+
+    private func quiet(_ text: String) -> some View {
+        Text(text).font(.subheadline).foregroundStyle(palette.muted).frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8, content: content)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(palette.card, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func chipColor(selected: Bool, on: Bool?) -> Color {
+        guard selected else { return palette.card2 }
+        if on == true { return palette.powerOn }
+        if on == false { return palette.powerOff }
+        return palette.card2
+    }
+}
+
+private struct Hint {
+    var whenText: String
+    var duration: String?
+}
+
+private func nextHint(_ picture: PowerPicture?, _ now: Int64) -> Hint {
+    guard let picture else { return Hint(whenText: "График подтянется с сайта", duration: nil) }
+    if picture.displayOn == true, let off = picture.nextOffAt {
+        return Hint(whenText: "По графику выключат в \(ScheduleMath.formatDayTime(off, now: now))", duration: "через \(ScheduleMath.formatDuration(off - now))")
+    }
+    if picture.displayOn == true { return Hint(whenText: "Ближайших отключений по графику нет", duration: nil) }
+    if picture.displayOn == false, let back = picture.nextOnAt {
+        return Hint(whenText: "По графику включат в \(ScheduleMath.formatDayTime(back, now: now))", duration: "через \(ScheduleMath.formatDuration(back - now))")
+    }
+    if picture.displayOn == false { return Hint(whenText: "Когда включат, на графике не сказано", duration: nil) }
+    return Hint(whenText: "Не удалось понять статус этой группы", duration: nil)
+}
+
+struct DaySlice: Identifiable {
+    var start: Int
+    var end: Int
+    var powerOn: Bool
+    var id: Int { start }
+    var length: Int { end - start }
+}
+
+func daySlices(_ outages: [Outage]) -> [DaySlice] {
+    var cursor = 0
+    var slices: [DaySlice] = []
+    for outage in outages.sorted(by: { $0.startMin < $1.startMin }) {
+        let start = min(1440, max(0, outage.startMin))
+        let end = min(1440, max(start, outage.endMin))
+        if start > cursor { slices.append(DaySlice(start: cursor, end: start, powerOn: true)) }
+        if end > start { slices.append(DaySlice(start: start, end: end, powerOn: false)) }
+        cursor = max(cursor, end)
+    }
+    if cursor < 1440 { slices.append(DaySlice(start: cursor, end: 1440, powerOn: true)) }
+    return slices
+}
+
+struct DayTrack: View {
+    var title: String
+    var outages: [Outage]
+    var nowMin: Int?
+    var palette: SvitloPalette
+
+    var body: some View {
+        let slices = daySlices(outages)
+        let onMinutes = slices.filter(\.powerOn).reduce(0) { $0 + $1.length }
+        let offMinutes = slices.filter { !$0.powerOn }.reduce(0) { $0 + $1.length }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(title).font(.headline).foregroundStyle(palette.ink)
+                Spacer()
+                Text("свет \(compact(onMinutes))").font(.caption.weight(.semibold)).foregroundStyle(palette.powerOnText)
+                Text("нет \(compact(offMinutes))").font(.caption.weight(.semibold)).foregroundStyle(palette.powerOffText)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    HStack(spacing: 0) {
+                        ForEach(slices) { slice in
+                            ZStack {
+                                Rectangle().fill(slice.powerOn ? palette.powerOn : palette.powerOff)
+                                if slice.length >= 90 {
+                                    Text(compact(slice.length))
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(slice.powerOn ? palette.onPowerOn : palette.onPowerOff)
+                                }
+                            }
+                            .frame(width: geo.size.width * CGFloat(slice.length) / 1440)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    if let nowMin {
+                        Rectangle()
+                            .fill(palette.now)
+                            .frame(width: 2, height: 44)
+                            .offset(x: geo.size.width * CGFloat(nowMin) / 1440 - 1)
+                    }
+                }
+            }
+            .frame(height: 44)
+            marks(slices)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.card, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func marks(_ slices: [DaySlice]) -> some View {
+        let labels = slices.compactMap { slice -> String? in
+            guard (1..<1440).contains(slice.start) else { return nil }
+            let verb = slice.powerOn ? "включат" : "выключат"
+            return "\(ScheduleMath.formatClock(minutes: slice.start)) \(verb)"
+        }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("00").font(.caption2).foregroundStyle(palette.muted)
+                Spacer()
+                Text("24").font(.caption2).foregroundStyle(palette.muted)
+            }
+            Text(labels.joined(separator: "   ·   "))
+                .font(.caption)
+                .foregroundStyle(palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func compact(_ minutes: Int) -> String {
+        let hours = minutes / 60
+        let rest = minutes % 60
+        if hours > 0 && rest > 0 { return "\(hours) ч \(rest) мин" }
+        if hours > 0 { return "\(hours) ч" }
+        return "\(rest) мин"
+    }
+}

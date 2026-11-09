@@ -1,0 +1,234 @@
+import Foundation
+
+enum ScheduleMath {
+    static let warnBeforeMs: Int64 = 10 * 60 * 1000
+    static let zone: TimeZone = TimeZone(identifier: "Europe/Kyiv")
+        ?? TimeZone(identifier: "Europe/Kiev")
+        ?? TimeZone(secondsFromGMT: 2 * 60 * 60)!
+
+    private static let horizonMs: Int64 = 36 * 60 * 60 * 1000
+    private static let liveFreshMs: Int64 = 20 * 60 * 1000
+    private static let mergeMs: Int64 = 20 * 60 * 1000
+
+    static func calendar() -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        calendar.locale = Locale(identifier: "ru_RU")
+        return calendar
+    }
+
+    static func picture(snapshot: Snapshot, selection: Selection, now: Int64) -> PowerPicture {
+        let todaySchedule = snapshot.days.first { $0.day == "today" }
+        let tomorrowSchedule = snapshot.days.first { $0.day == "tomorrow" }
+        let scheduleDate = todaySchedule.flatMap { parseDate($0.updatedDate) }
+        let group = selection.group
+        let todayOutages = todaySchedule?.groups[group] ?? []
+        let tomorrowOutages = tomorrowSchedule?.groups[group] ?? []
+        let today = startOfDay(date(from: now))
+
+        var ranges: [Range] = []
+        let publishedToday = scheduleDate == today && todaySchedule?.groups[group] != nil
+        let publishedYesterday = scheduleDate == adding(days: -1, to: today)
+        if publishedToday, let scheduleDate {
+            ranges += absoluteRanges(scheduleDate, todayOutages)
+        }
+        if tomorrowSchedule?.groups[group] != nil && (publishedToday || publishedYesterday) {
+            let day = publishedYesterday ? today : adding(days: 1, to: scheduleDate ?? today)
+            ranges += absoluteRanges(day, tomorrowOutages)
+        }
+        ranges.sort { $0.start < $1.start }
+
+        let coversToday = publishedToday || (publishedYesterday && tomorrowSchedule?.groups[group] != nil)
+        let plannedOn: Bool? = coversToday ? !ranges.contains { now >= $0.start && now < $0.end } : nil
+
+        let live = snapshot.live.first { $0.id == group }
+        let liveFresh = live != nil && now - snapshot.fetchedAt >= 0 && now - snapshot.fetchedAt <= liveFreshMs
+        var nextOff = ranges.filter { $0.start > now }.map(\.start).min()
+        var nextOn = ranges.first { now >= $0.start && now < $0.end }?.end
+            ?? ranges.filter { $0.start > now }.min { $0.start < $1.start }?.end
+
+        if liveFresh, let live {
+            let changeAt = snapshot.fetchedAt + Int64(live.seconds) * 1000
+            if changeAt > now - 60_000 {
+                if live.powerOn && live.toward == "OFF" { nextOff = changeAt }
+                if !live.powerOn && live.toward == "ON" { nextOn = changeAt }
+            }
+        }
+
+        let house = findHouse(snapshot.houses, selection)
+        let displayOn: Bool? = {
+            if let house { return house.powerOn }
+            if liveFresh, let live { return live.powerOn }
+            return plannedOn
+        }()
+
+        var offMoments = ranges.map(\.start).filter { $0 > now && $0 <= now + horizonMs }
+        if let nextOff, nextOff > now, nextOff <= now + horizonMs {
+            offMoments.removeAll { abs($0 - nextOff) < mergeMs }
+            offMoments.append(nextOff)
+        }
+        var onMoments = ranges.map(\.end).filter { $0 > now && $0 <= now + horizonMs }
+        if let nextOn, nextOn > now, nextOn <= now + horizonMs {
+            onMoments.removeAll { abs($0 - nextOn) < mergeMs }
+            onMoments.append(nextOn)
+        }
+
+        let shownToday: [Outage] = {
+            if publishedToday { return todayOutages }
+            if publishedYesterday, tomorrowSchedule != nil { return tomorrowOutages }
+            return []
+        }()
+        let shownTomorrow = publishedToday && tomorrowSchedule != nil ? tomorrowOutages : []
+        let updated = todaySchedule?.groupUpdated[group]?.nilIfBlank
+            ?? [todaySchedule?.updatedDate, todaySchedule?.updatedTime]
+                .compactMap { $0?.nilIfBlank }
+                .joined(separator: " ")
+
+        return PowerPicture(
+            displayOn: displayOn,
+            plannedOn: liveFresh && live != nil ? live?.powerOn : plannedOn,
+            houseOn: house?.powerOn,
+            nextOffAt: nextOff.flatMap { $0 > now ? $0 : nil },
+            nextOnAt: nextOn.flatMap { $0 > now ? $0 : nil },
+            dueWarnOffAt: nextOff.flatMap { $0 > now && $0 - now <= warnBeforeMs ? $0 : nil },
+            warnAts: offMoments.map { $0 - warnBeforeMs }.filter { $0 > now + 5_000 }.sorted(),
+            appearAts: onMoments.sorted(),
+            outagesToday: shownToday,
+            outagesTomorrow: shownTomorrow,
+            scheduleLabel: todaySchedule?.label ?? "",
+            updatedLabel: updated,
+            usingHouse: house != nil
+        )
+    }
+
+    static func knownGroups(_ snapshot: Snapshot?) -> [String] {
+        var keys: Set<String> = [
+            "1.1", "1.2", "2.1", "2.2", "3.1", "3.2", "4.1", "4.2", "5.1", "5.2", "6.1", "6.2",
+        ]
+        snapshot?.days.forEach { keys.formUnion($0.groups.keys) }
+        snapshot?.live.forEach { keys.insert($0.id) }
+        snapshot?.houses.forEach { keys.insert($0.group) }
+        return keys.sorted {
+            let left = ($0.split(separator: ".").first.flatMap { Int($0) } ?? 9, $0)
+            let right = ($1.split(separator: ".").first.flatMap { Int($0) } ?? 9, $1)
+            return left < right
+        }
+    }
+
+    static func minuteOfDay(_ epochMs: Int64) -> Int {
+        let parts = calendar().dateComponents([.hour, .minute], from: date(from: epochMs))
+        return (parts.hour ?? 0) * 60 + (parts.minute ?? 0)
+    }
+
+    /// 23:00 inclusive until 07:00 exclusive.
+    static func isQuietHour(_ epochMs: Int64) -> Bool {
+        let minute = minuteOfDay(epochMs)
+        return minute >= 23 * 60 || minute < 7 * 60
+    }
+
+    static func formatDayTime(_ epochMs: Int64, now: Int64) -> String {
+        let whenDay = startOfDay(date(from: epochMs))
+        let nowDay = startOfDay(date(from: now))
+        let clock = formatClock(epochMs)
+        if whenDay == nowDay { return clock }
+        if whenDay == adding(days: 1, to: nowDay) { return "завтра \(clock)" }
+        let parts = calendar().dateComponents([.day, .month], from: date(from: epochMs))
+        let day = parts.day ?? 0
+        let month = String(format: "%02d", parts.month ?? 0)
+        return "\(day).\(month) \(clock)"
+    }
+
+    static func formatDuration(_ ms: Int64) -> String {
+        let total = max(0, Int(ms / 60_000))
+        let hours = total / 60
+        let minutes = total % 60
+        if hours > 0 && minutes > 0 { return "\(hours) ч \(minutes) мин" }
+        if hours > 0 { return "\(hours) ч" }
+        return "\(minutes) мин"
+    }
+
+    static func formatClock(minutes: Int) -> String {
+        let capped = min(1440, max(0, minutes))
+        return String(format: "%02d:%02d", capped / 60, capped % 60)
+    }
+
+    static func date(from epochMs: Int64) -> Date {
+        Date(timeIntervalSince1970: TimeInterval(epochMs) / 1000)
+    }
+
+    static func millis(_ date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1000).rounded())
+    }
+
+    private struct Range {
+        var start: Int64
+        var end: Int64
+    }
+
+    private static func absoluteRanges(_ day: Date, _ outages: [Outage]) -> [Range] {
+        let origin = millis(startOfDay(day))
+        return outages.map { outage in
+            Range(
+                start: origin + Int64(outage.startMin) * 60_000,
+                end: origin + Int64(outage.endMin) * 60_000
+            )
+        }
+    }
+
+    private static func startOfDay(_ date: Date) -> Date {
+        calendar().startOfDay(for: date)
+    }
+
+    private static func adding(days: Int, to date: Date) -> Date {
+        calendar().date(byAdding: .day, value: days, to: startOfDay(date)) ?? date
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar()
+        formatter.timeZone = zone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "dd.MM.yyyy"
+        return formatter.date(from: value).map(startOfDay)
+    }
+
+    private static func formatClock(_ epochMs: Int64) -> String {
+        let parts = calendar().dateComponents([.hour, .minute], from: date(from: epochMs))
+        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+    }
+
+    private static func findHouse(_ houses: [HouseStatus], _ selection: Selection) -> HouseStatus? {
+        guard let street = selection.street, let house = selection.house else { return nil }
+        let streetKey = normStreet(street)
+        let houseKey = normHouse(house)
+        guard !streetKey.isEmpty, !houseKey.isEmpty else { return nil }
+        return houses.first { item in
+            guard item.group == selection.group else { return false }
+            let parts = item.address.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            guard parts.count >= 2 else { return false }
+            return normStreet(parts[0]) == streetKey && normHouse(parts[1]) == houseKey
+        }
+    }
+
+    private static func normStreet(_ value: String) -> String {
+        value.lowercased()
+            .replacingOccurrences(of: "вул.", with: "")
+            .replacingOccurrences(of: "вулиця", with: "")
+            .replacingOccurrences(of: "пров.", with: "")
+            .replacingOccurrences(of: "провулок", with: "")
+            .replacingOccurrences(of: "просп.", with: "")
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: " ", with: "")
+    }
+
+    private static func normHouse(_ value: String) -> String {
+        value.lowercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: ".", with: "")
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? { isEmpty ? nil : self }
+}

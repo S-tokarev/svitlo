@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/widget_kicker"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Светло"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:textColor="#B6AB9C"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="Выберите группу"
+        android:textColor="#F6F1E7"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_next"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:text="Откройте приложение"
+        android:textColor="#F6F1E7"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/widget_updated"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="График ДТЕК · alerts.energy"
+        android:textColor="#B6AB9C"
+        android:textSize="11sp" />
+</LinearLayout>

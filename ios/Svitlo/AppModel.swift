@@ -1,0 +1,191 @@
+import BackgroundTasks
+import Foundation
+import WidgetKit
+
+extension Notification.Name {
+    static let svitloUpdated = Notification.Name("svitloUpdated")
+}
+
+enum RefreshScheduler {
+    static func register() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: AppGroup.refreshTaskId, using: nil) { task in
+            guard let refresh = task as? BGAppRefreshTask else { return }
+            let work = Task {
+                do {
+                    try await ScheduleRefresh.run()
+                    refresh.setTaskCompleted(success: true)
+                } catch {
+                    refresh.setTaskCompleted(success: false)
+                }
+                schedule()
+            }
+            refresh.expirationHandler = { work.cancel() }
+        }
+    }
+
+    static func schedule() {
+        let request = BGAppRefreshTaskRequest(identifier: AppGroup.refreshTaskId)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 10 * 60)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+}
+
+enum ScheduleRefresh {
+    static func run() async throws {
+        let html = try await SvitloClient.fetchPage()
+        let parsed = SvitloParser.parse(html: html)
+        guard !parsed.days.isEmpty else { throw SvitloError.message("Сайт отдал страницу без графика") }
+        let snapshot = Snapshot(
+            fetchedAt: ScheduleMath.millis(Date()),
+            days: parsed.days,
+            live: parsed.live,
+            houses: parsed.houses,
+            tomorrowMissing: parsed.tomorrowMissing,
+            note: parsed.note
+        )
+        AppStore.saveSnapshot(snapshot)
+        Notifier.reschedule(selection: AppStore.loadSelection(), snapshot: snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
+        NotificationCenter.default.post(name: .svitloUpdated, object: nil)
+    }
+}
+
+@MainActor
+final class AppModel: ObservableObject {
+    @Published var selection = AppStore.loadSelection()
+    @Published var snapshot = AppStore.loadSnapshot()
+    @Published var loading = false
+    @Published var error: String?
+    @Published var query = ""
+    @Published var results: [AddressHit] = []
+    @Published var searching = false
+    @Published var searchError: String?
+    @Published var warnEnabled = AppStore.warnEnabled()
+    @Published var notifyOn = AppStore.notifyWhenOn()
+    @Published var quietNight = AppStore.quietNight()
+    @Published var theme = AppStore.themeMode()
+    @Published var now = Date()
+
+    private var clock: Task<Void, Never>?
+
+    func startup() async {
+        clock?.cancel()
+        clock = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                now = Date()
+            }
+        }
+        await refreshIfStale()
+        _ = await Notifier.requestAccess()
+        RefreshScheduler.schedule()
+    }
+
+    func refreshIfStale() async {
+        let fetched = snapshot?.fetchedAt ?? 0
+        if snapshot == nil || ScheduleMath.millis(Date()) - fetched >= 10 * 60 * 1000 {
+            await refresh(manual: false)
+        } else {
+            Notifier.reschedule(selection: selection, snapshot: snapshot)
+        }
+    }
+
+    func refresh(manual: Bool = true) async {
+        loading = true
+        if manual { error = nil }
+        do {
+            try await ScheduleRefresh.run()
+            snapshot = AppStore.loadSnapshot()
+            error = nil
+        } catch {
+            snapshot = AppStore.loadSnapshot()
+            if manual || snapshot == nil {
+                self.error = error.localizedDescription
+            }
+        }
+        loading = false
+    }
+
+    func selectGroup(_ group: String) {
+        selection = Selection(group: group)
+        results = []
+        persistSelection()
+    }
+
+    func pick(_ hit: AddressHit) async {
+        if hit.group.isEmpty {
+            searching = true
+            searchError = nil
+            results = []
+            do {
+                let lookup = try await AddressDirectory.shared.houses(
+                    city: hit.city,
+                    street: hit.street,
+                    houseQuery: AddressMatch.houseFilter(query)
+                )
+                results = lookup.hits
+                searchError = lookup.hint ?? (lookup.hits.isEmpty ? "ДТЕК не указал группу для этой улицы" : nil)
+            } catch {
+                searchError = error.localizedDescription
+            }
+            searching = false
+            return
+        }
+        selection = Selection(group: hit.group, street: hit.street, house: hit.house, city: hit.city)
+        query = hit.label
+        results = []
+        persistSelection()
+    }
+
+    func search() async {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count >= 2 else {
+            searchError = "Введите хотя бы 2 буквы"
+            return
+        }
+        searching = true
+        searchError = nil
+        do {
+            let lookup = try await AddressDirectory.shared.search(text)
+            results = lookup.hits
+            searchError = lookup.hint ?? (lookup.hits.isEmpty ? "Ничего не найдено" : nil)
+        } catch {
+            searchError = error.localizedDescription
+        }
+        searching = false
+    }
+
+    func setWarn(_ value: Bool) {
+        warnEnabled = value
+        AppStore.setWarnEnabled(value)
+        Notifier.reschedule(selection: selection, snapshot: snapshot)
+    }
+
+    func setNotify(_ value: Bool) {
+        notifyOn = value
+        AppStore.setNotifyWhenOn(value)
+        Notifier.reschedule(selection: selection, snapshot: snapshot)
+    }
+
+    func setQuiet(_ value: Bool) {
+        quietNight = value
+        AppStore.setQuietNight(value)
+        Notifier.reschedule(selection: selection, snapshot: snapshot)
+    }
+
+    func setTheme(_ mode: ThemeMode) {
+        theme = mode
+        AppStore.setThemeMode(mode)
+    }
+
+    func applyExternalUpdate() {
+        snapshot = AppStore.loadSnapshot()
+        selection = AppStore.loadSelection()
+    }
+
+    private func persistSelection() {
+        AppStore.saveSelection(selection)
+        Notifier.reschedule(selection: selection, snapshot: snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+}
