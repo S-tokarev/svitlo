@@ -56,6 +56,16 @@ object SvitloRepository {
         )
         val app = context.applicationContext
         val store = SvitloStore(app)
+        val previous = store.loadSnapshot()
+        val selection = store.loadSelection()
+        if (previous != null && selection.group.isNotBlank() &&
+            ScheduleMath.scheduleChanged(previous, snapshot, selection.group, snapshot.fetchedAt)
+        ) {
+            val key = "plan:" + ScheduleMath.planStamp(snapshot, selection.group)
+            if (store.markNotified(key)) {
+                Notifier.scheduleChanged(app, selection.group, selection.placeLabel)
+            }
+        }
         store.saveSnapshot(snapshot)
         synchronized(gate) {
             evaluate(app, store, snapshot, announceTransitions = true)

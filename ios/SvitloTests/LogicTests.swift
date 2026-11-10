@@ -55,6 +55,40 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(picture.updatedLabel, "08.11.2026 23:45")
     }
 
+    func testLightAfterMidnightUsesTheNextDayInsteadOfZero() {
+        let now = kyiv(2026, 11, 9, 23, 10)
+        let continued = snapshot(now, days: [
+            DaySchedule(day: "today", label: "9 ноября", updatedDate: "09.11.2026", updatedTime: "", groups: ["2.1": [Outage(startMin: 1230, endMin: 1440)]], groupUpdated: [:]),
+            DaySchedule(day: "tomorrow", label: "10 ноября", updatedDate: "10.11.2026", updatedTime: "", groups: ["2.1": [Outage(startMin: 0, endMin: 180)]], groupUpdated: [:]),
+        ])
+        let on = ScheduleMath.picture(snapshot: continued, selection: Selection(group: "2.1"), now: now).nextOnAt ?? -1
+        let parts = ScheduleMath.calendar().dateComponents([.day, .hour, .minute], from: ScheduleMath.date(from: on))
+        XCTAssertEqual(parts.day, 10)
+        XCTAssertEqual(parts.hour, 3)
+        XCTAssertEqual(parts.minute, 0)
+
+        let cutoff = snapshot(now, days: [
+            DaySchedule(day: "today", label: "9 ноября", updatedDate: "09.11.2026", updatedTime: "", groups: ["2.1": [Outage(startMin: 1230, endMin: 1440)]], groupUpdated: [:]),
+        ])
+        XCTAssertNil(ScheduleMath.picture(snapshot: cutoff, selection: Selection(group: "2.1"), now: now).nextOnAt)
+    }
+
+    func testScheduleChangeIgnoresAFinishedDay() {
+        let now = kyiv(2026, 11, 10, 9, 0)
+        let before = snapshot(now, days: [
+            DaySchedule(day: "today", label: "9 ноября", updatedDate: "09.11.2026", updatedTime: "", groups: ["2.1": [Outage(startMin: 0, endMin: 60)]], groupUpdated: [:]),
+            DaySchedule(day: "tomorrow", label: "10 ноября", updatedDate: "10.11.2026", updatedTime: "", groups: ["2.1": [Outage(startMin: 0, endMin: 180)]], groupUpdated: [:]),
+        ])
+        let rolled = snapshot(now, days: [
+            DaySchedule(day: "today", label: "10 ноября", updatedDate: "10.11.2026", updatedTime: "", groups: ["2.1": [Outage(startMin: 0, endMin: 180)]], groupUpdated: [:]),
+        ])
+        XCTAssertFalse(ScheduleMath.scheduleChanged(previous: before, next: rolled, group: "2.1", now: now))
+        let edited = snapshot(now, days: [
+            DaySchedule(day: "today", label: "10 ноября", updatedDate: "10.11.2026", updatedTime: "", groups: ["2.1": [Outage(startMin: 0, endMin: 240)]], groupUpdated: [:]),
+        ])
+        XCTAssertTrue(ScheduleMath.scheduleChanged(previous: rolled, next: edited, group: "2.1", now: now))
+    }
+
     func testQuietHoursCoverNightButNotEvening() {
         XCTAssertTrue(ScheduleMath.isQuietHour(kyiv(2026, 11, 9, 23, 0)))
         XCTAssertTrue(ScheduleMath.isQuietHour(kyiv(2026, 11, 9, 2, 15)))
@@ -129,6 +163,10 @@ final class LogicTests: XCTestCase {
         parts.minute = minute
         let date = ScheduleMath.calendar().date(from: parts)!
         return ScheduleMath.millis(date)
+    }
+
+    private func snapshot(_ now: Int64, days: [DaySchedule]) -> Snapshot {
+        Snapshot(fetchedAt: now, days: days, live: [], houses: [], tomorrowMissing: !days.contains { $0.day == "tomorrow" }, note: "")
     }
 
     private func sample(tomorrow: Bool, live: Bool, house: Bool) -> String {

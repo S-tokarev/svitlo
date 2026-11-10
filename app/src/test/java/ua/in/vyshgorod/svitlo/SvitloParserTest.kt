@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ua.`in`.vyshgorod.svitlo.data.DaySchedule
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
@@ -74,6 +75,48 @@ class SvitloParserTest {
     }
 
     @Test
+    fun lightAfterMidnightUsesTheNextDayInsteadOfZero() {
+        val zone = ScheduleMath.zone
+        val now = LocalDate.of(2026, 11, 9).atTime(23, 10).atZone(zone).toInstant().toEpochMilli()
+        val continued = snapshot(
+            now,
+            DaySchedule("today", "9 ноября", "09.11.2026", "", mapOf("2.1" to listOf(Outage(1230, 1440)))),
+            DaySchedule("tomorrow", "10 ноября", "10.11.2026", "", mapOf("2.1" to listOf(Outage(0, 180)))),
+        )
+        val on = ScheduleMath.picture(continued, Selection(group = "2.1"), now).nextOnAt ?: error("missing on")
+        val time = java.time.Instant.ofEpochMilli(on).atZone(zone)
+        assertEquals(10, time.dayOfMonth)
+        assertEquals(3, time.hour)
+        assertEquals(0, time.minute)
+
+        val cutoff = snapshot(
+            now,
+            DaySchedule("today", "9 ноября", "09.11.2026", "", mapOf("2.1" to listOf(Outage(1230, 1440)))),
+        )
+        assertNull(ScheduleMath.picture(cutoff, Selection(group = "2.1"), now).nextOnAt)
+    }
+
+    @Test
+    fun scheduleChangeIgnoresAFinishedDay() {
+        val now = LocalDate.of(2026, 11, 10).atTime(9, 0).atZone(ScheduleMath.zone).toInstant().toEpochMilli()
+        val before = snapshot(
+            now,
+            DaySchedule("today", "9 ноября", "09.11.2026", "", mapOf("2.1" to listOf(Outage(0, 60)))),
+            DaySchedule("tomorrow", "10 ноября", "10.11.2026", "", mapOf("2.1" to listOf(Outage(0, 180)))),
+        )
+        val rolled = snapshot(
+            now,
+            DaySchedule("today", "10 ноября", "10.11.2026", "", mapOf("2.1" to listOf(Outage(0, 180)))),
+        )
+        assertFalse(ScheduleMath.scheduleChanged(before, rolled, "2.1", now))
+        val edited = snapshot(
+            now,
+            DaySchedule("today", "10 ноября", "10.11.2026", "", mapOf("2.1" to listOf(Outage(0, 240)))),
+        )
+        assertTrue(ScheduleMath.scheduleChanged(rolled, edited, "2.1", now))
+    }
+
+    @Test
     fun quietHoursCoverNightButNotEvening() {
         val zone = ScheduleMath.zone
         fun at(hour: Int, minute: Int): Long {
@@ -86,6 +129,14 @@ class SvitloParserTest {
         assertFalse(ScheduleMath.isQuietHour(at(22, 59)))
         assertFalse(ScheduleMath.isQuietHour(at(18, 11)))
     }
+
+    private fun snapshot(now: Long, vararg days: DaySchedule) = Snapshot(
+        fetchedAt = now,
+        days = days.toList(),
+        live = emptyList(),
+        houses = emptyList(),
+        tomorrowMissing = days.none { it.day == "tomorrow" },
+    )
 
     private fun page(today: Boolean, tomorrow: Boolean, live: Boolean, house: Boolean): String {
         val charts = buildString {

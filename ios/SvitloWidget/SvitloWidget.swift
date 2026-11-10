@@ -1,6 +1,13 @@
 import SwiftUI
 import WidgetKit
 
+struct ScaleSlice: Identifiable {
+    var start: Int
+    var end: Int
+    var powerOn: Bool
+    var id: Int { start }
+}
+
 struct WidgetEntry: TimelineEntry {
     var date: Date
     var background: Color
@@ -11,6 +18,8 @@ struct WidgetEntry: TimelineEntry {
     var status: String
     var next: String
     var footer: String
+    var slices: [ScaleSlice]
+    var nowMin: Int?
 }
 
 struct Provider: TimelineProvider {
@@ -34,7 +43,7 @@ struct Provider: TimelineProvider {
         }
         let unique = Array(Set(dates.map { Int($0.timeIntervalSince1970 / 60) })).sorted()
         let entries = unique.map { entry(at: Date(timeIntervalSince1970: TimeInterval($0 * 60))) }
-        completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(30 * 60))))
+        completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(15 * 60))))
     }
 
     private func entry(at date: Date) -> WidgetEntry {
@@ -45,7 +54,7 @@ struct Provider: TimelineProvider {
                 date: date, background: Color(hex: 0x22201C), statusColor: Color(hex: 0xF6F1E7),
                 ink: Color(hex: 0xF6F1E7), muted: Color(hex: 0xB6AB9C),
                 kicker: "Светло", status: "Выберите группу", next: "Откройте приложение",
-                footer: "vyshgorod.in.ua/svitlo"
+                footer: "vyshgorod.in.ua/svitlo", slices: [], nowMin: nil
             )
         }
         let now = ScheduleMath.millis(date)
@@ -64,7 +73,8 @@ struct Provider: TimelineProvider {
             return WidgetEntry(
                 date: date, background: Color(hex: 0xD7F6E4), statusColor: Color(hex: 0x0F6B38),
                 ink: Color(hex: 0x143024), muted: Color(hex: 0x3D6B52),
-                kicker: kicker, status: "Свет есть", next: next, footer: footer
+                kicker: kicker, status: "Свет есть", next: next, footer: footer,
+                slices: scaleSlices(picture.outagesToday), nowMin: ScheduleMath.minuteOfDay(now)
             )
         case false:
             let next: String
@@ -76,13 +86,15 @@ struct Provider: TimelineProvider {
             return WidgetEntry(
                 date: date, background: Color(hex: 0xF8D5CC), statusColor: Color(hex: 0xA33E2C),
                 ink: Color(hex: 0x3C120C), muted: Color(hex: 0x7A463C),
-                kicker: kicker, status: "Света нет", next: next, footer: footer
+                kicker: kicker, status: "Света нет", next: next, footer: footer,
+                slices: scaleSlices(picture.outagesToday), nowMin: ScheduleMath.minuteOfDay(now)
             )
         default:
             return WidgetEntry(
                 date: date, background: Color(hex: 0x22201C), statusColor: Color(hex: 0xF6F1E7),
                 ink: Color(hex: 0xF6F1E7), muted: Color(hex: 0xB6AB9C),
-                kicker: kicker, status: "Нет данных", next: "Обновите график в приложении", footer: footer
+                kicker: kicker, status: "Нет данных", next: "Обновите график в приложении", footer: footer,
+                slices: [], nowMin: nil
             )
         }
     }
@@ -96,6 +108,39 @@ struct SvitloWidgetView: View {
             Text(entry.kicker).font(.caption).foregroundStyle(entry.muted).lineLimit(2)
             Text(entry.status).font(.title2.bold()).foregroundStyle(entry.statusColor)
             Text(entry.next).font(.subheadline).foregroundStyle(entry.ink).lineLimit(3)
+            if !entry.slices.isEmpty {
+                GeometryReader { geo in
+                    VStack(alignment: .leading, spacing: 2) {
+                        ZStack(alignment: .leading) {
+                            HStack(spacing: 0) {
+                                ForEach(entry.slices) { slice in
+                                    Rectangle()
+                                        .fill(slice.powerOn ? Color(hex: 0xF4F0E6) : Color(hex: 0x3C120C))
+                                        .frame(width: max(0, geo.size.width * CGFloat(slice.end - slice.start) / 1440))
+                                }
+                            }
+                            if let nowMin = entry.nowMin {
+                                Rectangle()
+                                    .fill(Color(hex: 0x1C6E8A))
+                                    .frame(width: 2, height: 8)
+                                    .offset(x: max(0, geo.size.width * CGFloat(nowMin) / 1440 - 1))
+                            }
+                        }
+                        .frame(height: 8)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        ZStack {
+                            ForEach(widgetHours(entry.slices, width: geo.size.width), id: \.start) { slice in
+                                Text(slice.start % 60 == 0 ? String(format: "%02d", slice.start / 60) : String(format: "%02d:%02d", slice.start / 60, slice.start % 60))
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(entry.ink)
+                                    .position(x: geo.size.width * CGFloat(slice.start) / 1440, y: 6)
+                            }
+                        }
+                        .frame(height: 12)
+                    }
+                }
+                .frame(height: 22)
+            }
             Spacer(minLength: 0)
             Text(entry.footer).font(.caption2).foregroundStyle(entry.muted).lineLimit(2)
         }
@@ -118,4 +163,35 @@ struct SvitloWidget: Widget {
 @main
 struct SvitloWidgetBundle: WidgetBundle {
     var body: some Widget { SvitloWidget() }
+}
+
+private func widgetHours(_ slices: [ScaleSlice], width: CGFloat) -> [ScaleSlice] {
+    var lastRight: CGFloat = -100
+    return slices.filter { slice in
+        guard (1..<1440).contains(slice.start) else { return false }
+        let text = slice.start % 60 == 0 ? String(format: "%02d", slice.start / 60) : String(format: "%02d:%02d", slice.start / 60, slice.start % 60)
+        let labelWidth = CGFloat(text.count) * 6
+        let left = width * CGFloat(slice.start) / 1440 - labelWidth / 2
+        guard left >= lastRight + 3, left + labelWidth <= width else { return false }
+        lastRight = left + labelWidth
+        return true
+    }
+}
+
+private func scaleSlices(_ outages: [Outage]) -> [ScaleSlice] {
+    let clipped = outages.compactMap { outage -> (Int, Int)? in
+        let start = min(1440, max(0, outage.startMin))
+        let end = min(1440, max(0, outage.endMin))
+        return end > start ? (start, end) : nil
+    }.sorted { $0.0 < $1.0 }
+    var slices: [ScaleSlice] = []
+    var cursor = 0
+    for (start, end) in clipped {
+        if start > cursor { slices.append(ScaleSlice(start: cursor, end: start, powerOn: true)) }
+        let from = max(start, cursor)
+        if end > from { slices.append(ScaleSlice(start: from, end: end, powerOn: false)) }
+        cursor = max(cursor, end)
+    }
+    if cursor < 1440 { slices.append(ScaleSlice(start: cursor, end: 1440, powerOn: true)) }
+    return slices
 }

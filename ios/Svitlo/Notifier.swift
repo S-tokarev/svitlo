@@ -11,6 +11,18 @@ enum Notifier {
         return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
     }
 
+    static func scheduleChanged(selection: Selection) {
+        guard !selection.group.isEmpty else { return }
+        let now = ScheduleMath.millis(Date())
+        if AppStore.quietNight(), ScheduleMath.isQuietHour(now) { return }
+        let content = UNMutableNotificationContent()
+        content.title = "График изменился"
+        content.body = details(selection.group, selection.placeLabel, "расписание на сайте обновили")
+        content.sound = .default
+        let center = UNUserNotificationCenter.current()
+        center.add(UNNotificationRequest(identifier: "plan-\(now)", content: content, trigger: nil))
+    }
+
     static func reschedule(selection: Selection, snapshot: Snapshot?) {
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()

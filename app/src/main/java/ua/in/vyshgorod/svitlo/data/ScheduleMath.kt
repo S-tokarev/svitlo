@@ -70,7 +70,9 @@ object ScheduleMath {
             val date = if (publishedYesterday) today else scheduleDate!!.plusDays(1)
             ranges += absoluteRanges(date, tomorrowOutages)
         }
-        ranges.sortBy { it.start }
+        val merged = mergeTouching(ranges.sortedBy { it.start })
+        ranges.clear()
+        ranges += merged
 
         val coversToday = publishedToday || (publishedYesterday && tomorrowSchedule?.groups?.containsKey(group) == true)
         val plannedOn = if (coversToday) ranges.none { now >= it.start && now < it.end } else null
@@ -85,9 +87,15 @@ object ScheduleMath {
             val changeAt = snapshot.fetchedAt + live.seconds * 1000L
             if (changeAt > now - 60_000L) {
                 if (live.powerOn && live.toward == "OFF") nextOff = changeAt
-                if (!live.powerOn && live.toward == "ON") nextOn = changeAt
+                if (!live.powerOn && live.toward == "ON") {
+                    val scheduled = nextOn
+                    val liveStopsAtMidnight = isDayBoundary(changeAt) && scheduled != null && scheduled > changeAt + 60_000L
+                    if (!liveStopsAtMidnight) nextOn = changeAt
+                }
             }
         }
+        val tomorrowKnown = tomorrowSchedule?.groups?.containsKey(group) == true && (publishedToday || publishedYesterday)
+        if (nextOn != null && isDayBoundary(nextOn) && !tomorrowKnown) nextOn = null
 
         val house = findHouse(snapshot.houses, selection)
         val displayOn = when {
@@ -111,6 +119,7 @@ object ScheduleMath {
             onMoments.removeAll { abs(it - keep) < MERGE_MS }
             onMoments.add(keep)
         }
+        if (!tomorrowKnown) onMoments.removeAll { isDayBoundary(it) }
 
         val shownToday = when {
             publishedToday -> todayOutages
@@ -195,6 +204,27 @@ object ScheduleMath {
         return keys.sortedWith(compareBy({ it.substringBefore('.').toIntOrNull() ?: 9 }, { it }))
     }
 
+    /**
+     * True when a future calendar day in [next] has different outages for [group]
+     * than [previous]. A day that is already over does not count as a change.
+     */
+    fun scheduleChanged(previous: Snapshot, next: Snapshot, group: String, now: Long): Boolean {
+        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        val old = plans(previous, group)
+        val fresh = plans(next, group)
+        return (old.keys + fresh.keys).any { key ->
+            val date = parseDate(key)
+            if (date != null && date.isBefore(today)) return@any false
+            normalize(old[key]) != normalize(fresh[key])
+        }
+    }
+
+    fun planStamp(snapshot: Snapshot, group: String): String {
+        return plans(snapshot, group).entries.joinToString("|") { (date, outages) ->
+            date + ":" + normalize(outages).joinToString(",") { "${it.startMin}-${it.endMin}" }
+        }
+    }
+
     fun minuteOfDay(now: Long): Int {
         val zoned = Instant.ofEpochMilli(now).atZone(zone)
         return zoned.hour * 60 + zoned.minute
@@ -207,6 +237,37 @@ object ScheduleMath {
     }
 
     private data class Range(val start: Long, val end: Long)
+
+    private fun mergeTouching(ranges: List<Range>): List<Range> {
+        val merged = mutableListOf<Range>()
+        for (range in ranges) {
+            val last = merged.lastOrNull()
+            if (last != null && range.start <= last.end) {
+                merged[merged.lastIndex] = Range(last.start, maxOf(last.end, range.end))
+            } else {
+                merged += range
+            }
+        }
+        return merged
+    }
+
+    private fun isDayBoundary(epochMs: Long): Boolean {
+        val zoned = Instant.ofEpochMilli(epochMs).atZone(zone)
+        return zoned.hour == 0 && zoned.minute == 0
+    }
+
+    private fun plans(snapshot: Snapshot, group: String): Map<String, List<Outage>> {
+        val map = linkedMapOf<String, List<Outage>>()
+        for (day in snapshot.days) {
+            if (day.updatedDate.isBlank()) continue
+            map[day.updatedDate] = day.groups[group] ?: continue
+        }
+        return map
+    }
+
+    private fun normalize(outages: List<Outage>?): List<Outage> {
+        return outages.orEmpty().sortedWith(compareBy({ it.startMin }, { it.endMin }))
+    }
 
     private fun absoluteRanges(date: LocalDate, outages: List<Outage>): List<Range> {
         val startOfDay = date.atStartOfDay(zone)

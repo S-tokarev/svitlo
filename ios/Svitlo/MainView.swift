@@ -63,11 +63,6 @@ struct MainView: View {
             Text(title)
                 .font(.system(size: 36, weight: .bold))
                 .foregroundStyle(color)
-            if !model.selection.group.isEmpty && on != nil {
-                Text(picture?.usingHouse == true ? "По датчику этого дома" : "По графику")
-                    .font(.caption)
-                    .foregroundStyle(palette.muted)
-            }
             Text(hint.whenText)
                 .font(.body)
                 .foregroundStyle(palette.ink)
@@ -98,15 +93,11 @@ struct MainView: View {
                 nowMin: ScheduleMath.minuteOfDay(nowMs),
                 palette: palette
             )
-        } else if !model.selection.group.isEmpty && model.snapshot != nil {
-            quiet("На сегодня для этой группы графика на сайте нет.")
         }
         if let picture, !picture.outagesTomorrow.isEmpty {
             DayTrack(title: "Завтра", outages: picture.outagesTomorrow, nowMin: nil, palette: palette)
         } else if model.snapshot?.days.contains(where: { $0.day == "tomorrow" && $0.groups[model.selection.group] != nil }) == true {
             DayTrack(title: "Завтра", outages: [], nowMin: nil, palette: palette)
-        } else if model.snapshot != nil && !model.selection.group.isEmpty {
-            quiet("Графика на завтра для этой группы ещё нет.")
         }
     }
 
@@ -132,7 +123,7 @@ struct MainView: View {
     private var address: some View {
         card {
             Text("Адрес").font(.headline).foregroundStyle(palette.ink)
-            Text("По всей Киевской области. Адрес выбирает группу. Если дом есть на vyshgorod.in.ua, статус берётся с датчика.")
+            Text("По всей Киевской области. Адрес выбирает группу.")
                 .font(.caption)
                 .foregroundStyle(palette.muted)
             TextField("Улица и дом, например Буча Шевченка 11", text: $model.query)
@@ -206,10 +197,6 @@ struct MainView: View {
 
     private func errorCard(_ text: String) -> some View {
         card { Text(text).foregroundStyle(palette.powerOffText) }
-    }
-
-    private func quiet(_ text: String) -> some View {
-        Text(text).font(.subheadline).foregroundStyle(palette.muted).frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -317,21 +304,42 @@ struct DayTrack: View {
     }
 
     private func marks(_ slices: [DaySlice]) -> some View {
-        let labels = slices.compactMap { slice -> String? in
+        let items = slices.compactMap { slice -> (minute: Int, powerOn: Bool)? in
             guard (1..<1440).contains(slice.start) else { return nil }
-            let verb = slice.powerOn ? "включат" : "выключат"
-            return "\(ScheduleMath.formatClock(minutes: slice.start)) \(verb)"
+            return (slice.start, slice.powerOn)
         }
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("00").font(.caption2).foregroundStyle(palette.muted)
-                Spacer()
-                Text("24").font(.caption2).foregroundStyle(palette.muted)
+        return VStack(spacing: 2) {
+            GeometryReader { geo in
+                let shown = visibleHours(items, width: geo.size.width)
+                ZStack(alignment: .topLeading) {
+                    Text("00").font(.caption2).foregroundStyle(palette.muted)
+                    Text("24").font(.caption2).foregroundStyle(palette.muted)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    ForEach(shown, id: \.minute) { item in
+                        Text(shortHour(item.minute))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(item.powerOn ? palette.powerOnText : palette.powerOffText)
+                            .position(x: geo.size.width * CGFloat(item.minute) / 1440, y: 8)
+                    }
+                }
             }
-            Text(labels.joined(separator: "   ·   "))
-                .font(.caption)
-                .foregroundStyle(palette.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            .frame(height: 18)
+        }
+    }
+
+    private func shortHour(_ minute: Int) -> String {
+        minute % 60 == 0 ? String(format: "%02d", minute / 60) : String(format: "%02d:%02d", minute / 60, minute % 60)
+    }
+
+    private func visibleHours(_ items: [(minute: Int, powerOn: Bool)], width: CGFloat) -> [(minute: Int, powerOn: Bool)] {
+        var lastRight: CGFloat = -100
+        return items.filter { item in
+            let text = shortHour(item.minute)
+            let labelWidth = CGFloat(text.count) * 8
+            let left = width * CGFloat(item.minute) / 1440 - labelWidth / 2
+            guard left >= lastRight + 4, left + labelWidth <= width else { return false }
+            lastRight = left + labelWidth
+            return true
         }
     }
 

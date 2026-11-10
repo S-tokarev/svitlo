@@ -36,7 +36,7 @@ enum ScheduleMath {
             let day = publishedYesterday ? today : adding(days: 1, to: scheduleDate ?? today)
             ranges += absoluteRanges(day, tomorrowOutages)
         }
-        ranges.sort { $0.start < $1.start }
+        ranges = mergeTouching(ranges.sorted { $0.start < $1.start })
 
         let coversToday = publishedToday || (publishedYesterday && tomorrowSchedule?.groups[group] != nil)
         let plannedOn: Bool? = coversToday ? !ranges.contains { now >= $0.start && now < $0.end } : nil
@@ -51,9 +51,15 @@ enum ScheduleMath {
             let changeAt = snapshot.fetchedAt + Int64(live.seconds) * 1000
             if changeAt > now - 60_000 {
                 if live.powerOn && live.toward == "OFF" { nextOff = changeAt }
-                if !live.powerOn && live.toward == "ON" { nextOn = changeAt }
+                if !live.powerOn && live.toward == "ON" {
+                    let scheduled = nextOn
+                    let liveStopsAtMidnight = isDayBoundary(changeAt) && scheduled != nil && (scheduled ?? 0) > changeAt + 60_000
+                    if !liveStopsAtMidnight { nextOn = changeAt }
+                }
             }
         }
+        let tomorrowKnown = tomorrowSchedule?.groups[group] != nil && (publishedToday || publishedYesterday)
+        if let boundary = nextOn, isDayBoundary(boundary), !tomorrowKnown { nextOn = nil }
 
         let house = findHouse(snapshot.houses, selection)
         let displayOn: Bool? = {
@@ -72,6 +78,7 @@ enum ScheduleMath {
             onMoments.removeAll { abs($0 - nextOn) < mergeMs }
             onMoments.append(nextOn)
         }
+        if !tomorrowKnown { onMoments.removeAll { isDayBoundary($0) } }
 
         let shownToday: [Outage] = {
             if publishedToday { return todayOutages }
@@ -113,6 +120,25 @@ enum ScheduleMath {
             let right = ($1.split(separator: ".").first.flatMap { Int($0) } ?? 9, $1)
             return left < right
         }
+    }
+
+    static func scheduleChanged(previous: Snapshot, next: Snapshot, group: String, now: Int64) -> Bool {
+        let today = startOfDay(date(from: now))
+        let old = plans(previous, group)
+        let fresh = plans(next, group)
+        return Set(old.keys).union(fresh.keys).contains { key in
+            if let date = parseDate(key), date < today { return false }
+            return normalize(old[key]) != normalize(fresh[key])
+        }
+    }
+
+    static func planStamp(snapshot: Snapshot, group: String) -> String {
+        plans(snapshot, group)
+            .sorted { $0.key < $1.key }
+            .map { date, outages in
+                date + ":" + normalize(outages).map { "\($0.startMin)-\($0.endMin)" }.joined(separator: ",")
+            }
+            .joined(separator: "|")
     }
 
     static func minuteOfDay(_ epochMs: Int64) -> Int {
@@ -163,6 +189,39 @@ enum ScheduleMath {
     private struct Range {
         var start: Int64
         var end: Int64
+    }
+
+    private static func mergeTouching(_ ranges: [Range]) -> [Range] {
+        var merged: [Range] = []
+        for range in ranges {
+            if let last = merged.last, range.start <= last.end {
+                merged[merged.count - 1] = Range(start: last.start, end: max(last.end, range.end))
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
+    }
+
+    private static func isDayBoundary(_ epochMs: Int64) -> Bool {
+        let parts = calendar().dateComponents([.hour, .minute], from: date(from: epochMs))
+        return parts.hour == 0 && parts.minute == 0
+    }
+
+    private static func plans(_ snapshot: Snapshot, _ group: String) -> [String: [Outage]] {
+        var map: [String: [Outage]] = [:]
+        for day in snapshot.days where !day.updatedDate.isEmpty {
+            guard let intervals = day.groups[group] else { continue }
+            map[day.updatedDate] = intervals
+        }
+        return map
+    }
+
+    private static func normalize(_ outages: [Outage]?) -> [Outage] {
+        (outages ?? []).sorted { lhs, rhs in
+            if lhs.startMin != rhs.startMin { return lhs.startMin < rhs.startMin }
+            return lhs.endMin < rhs.endMin
+        }
     }
 
     private static func absoluteRanges(_ day: Date, _ outages: [Outage]) -> [Range] {

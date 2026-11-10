@@ -17,7 +17,7 @@ object AlarmScheduler {
     const val EXTRA_OFF_AT = "offAt"
     const val EXTRA_ON_AT = "onAt"
 
-    private const val REFRESH_MS = 30 * 60 * 1000L
+    private const val REFRESH_MS = 15 * 60 * 1000L
     private const val MAX_ALERTS = 16
 
     fun scheduleRefresh(context: Context, delayMs: Long = REFRESH_MS) {

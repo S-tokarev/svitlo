@@ -23,7 +23,7 @@ object Notifier {
             "Свет",
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Появление света и предупреждение за 10 минут до отключения"
+            description = "Появление света, предупреждение за 10 минут и смена графика"
         }
         manager.createNotificationChannel(channel)
     }
@@ -37,6 +37,10 @@ object Notifier {
         }
         val whenText = ScheduleMath.formatDayTime(offAt, now)
         show(context, 100, title, details(group, place, "по графику отключение в $whenText"))
+    }
+
+    fun scheduleChanged(context: Context, group: String, place: String?) {
+        show(context, 102, "График изменился", details(group, place, "расписание на сайте обновили"))
     }
 
     fun appeared(context: Context, group: String, place: String?, confirmed: Boolean) {

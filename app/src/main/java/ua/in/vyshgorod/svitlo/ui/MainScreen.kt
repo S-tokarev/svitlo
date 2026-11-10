@@ -52,7 +52,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
-import ua.`in`.vyshgorod.svitlo.data.HouseStatus
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.PowerPicture
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
@@ -160,8 +159,6 @@ fun MainScreen(
                     nowMin = ScheduleMath.minuteOfDay(now),
                 )
             }
-        } else if (state.selection.group.isNotBlank() && state.snapshot != null) {
-            item { QuietNote("На сегодня для этой группы графика на сайте нет.") }
         }
 
         if (picture != null && picture.outagesTomorrow.isNotEmpty()) {
@@ -176,8 +173,6 @@ fun MainScreen(
             item {
                 DayScheduleCard(title = "Завтра", outages = emptyList(), nowMin = null)
             }
-        } else if (state.snapshot != null && state.selection.group.isNotBlank()) {
-            item { QuietNote("Графика на завтра для этой группы ещё нет.") }
         }
 
         item {
@@ -210,7 +205,7 @@ fun MainScreen(
                 SectionTitle("Адрес")
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "По всей Киевской области. Адрес выбирает группу. Если дом есть на vyshgorod.in.ua, статус берётся с датчика.",
+                    "По всей Киевской области. Адрес выбирает группу.",
                     color = LocalSvitloColors.current.muted,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -252,20 +247,6 @@ fun MainScreen(
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                     )
                     Spacer(Modifier.height(6.dp))
-                }
-            }
-        }
-
-        val houses = state.snapshot?.houses?.filter { it.group == state.selection.group }.orEmpty()
-        if (houses.isNotEmpty()) {
-            item {
-                val onCount = houses.count { it.powerOn }
-                Panel {
-                    SectionTitle("Дома группы ${state.selection.group}")
-                    Spacer(Modifier.height(4.dp))
-                    Text("Со светом $onCount, без света ${houses.size - onCount}", color = LocalSvitloColors.current.muted, fontSize = 13.sp)
-                    Spacer(Modifier.height(8.dp))
-                    houses.sortedBy { it.address }.forEach { house -> HouseRow(house) }
                 }
             }
         }
@@ -374,7 +355,7 @@ private fun StatusCard(selection: Selection, picture: PowerPicture?, fetchedAt: 
                 if (wide) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            StatusHeading(selection, title, color, on, picture?.usingHouse == true)
+                            StatusHeading(selection, title, color)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(hint.duration.orEmpty(), color = color, fontSize = 28.sp, fontWeight = FontWeight.Bold)
@@ -383,7 +364,7 @@ private fun StatusCard(selection: Selection, picture: PowerPicture?, fetchedAt: 
                         }
                     }
                 } else {
-                    StatusHeading(selection, title, color, on, picture?.usingHouse == true)
+                    StatusHeading(selection, title, color)
                     Spacer(Modifier.height(10.dp))
                     Text(hint.whenText, color = LocalSvitloColors.current.ink, fontSize = 16.sp, lineHeight = 22.sp)
                     if (hint.duration != null) {
@@ -411,7 +392,7 @@ private fun StatusCard(selection: Selection, picture: PowerPicture?, fetchedAt: 
 }
 
 @Composable
-private fun StatusHeading(selection: Selection, title: String, color: Color, on: Boolean?, usingHouse: Boolean) {
+private fun StatusHeading(selection: Selection, title: String, color: Color) {
     val place = selection.placeLabel
     Text(
         when {
@@ -424,13 +405,6 @@ private fun StatusHeading(selection: Selection, title: String, color: Color, on:
     )
     Spacer(Modifier.height(4.dp))
     Text(title, color = color, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-    if (selection.group.isNotBlank() && on != null) {
-        Text(
-            if (usingHouse) "По датчику этого дома" else "По графику",
-            color = LocalSvitloColors.current.muted,
-            fontSize = 13.sp,
-        )
-    }
 }
 
 private data class NextHint(val whenText: String, val duration: String?)
@@ -561,44 +535,24 @@ private fun DayTrack(slices: List<DaySlice>, nowMin: Int?) {
                     }
                 }
             }
-            Spacer(Modifier.height(2.dp))
-            Box(Modifier.fillMaxWidth().height(46.dp)) {
-                Text("00", color = c.muted, fontSize = 11.sp, modifier = Modifier.offset(x = 0.dp, y = 8.dp))
-                Text(
-                    "24",
-                    color = c.muted,
-                    fontSize = 11.sp,
-                    modifier = Modifier.offset(x = (trackWidth - 16.dp).coerceAtLeast(0.dp), y = 8.dp),
-                )
-                marks.forEach { mark ->
-                    val center = trackWidth * (mark.minute / 1440f)
-                    val tickColor = if (mark.turnsOn) c.powerOn else c.powerOff
-                    Box(
-                        Modifier
-                            .offset(x = (center - 1.dp).coerceIn(0.dp, (trackWidth - 2.dp).coerceAtLeast(0.dp)))
-                            .width(2.dp)
-                            .height(7.dp)
-                            .background(tickColor),
+            Spacer(Modifier.height(4.dp))
+            Box(Modifier.fillMaxWidth().height(18.dp)) {
+                Text("00", color = c.muted, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterStart))
+                Text("24", color = c.muted, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterEnd))
+                placed.forEach { item ->
+                    Text(
+                        hourLabel(item.mark.minute),
+                        color = if (item.mark.turnsOn) c.powerOnText else c.powerOffText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(x = item.left)
+                            .width(hourLabelWidth(item.mark.minute)),
                     )
-                }
-                placed.forEach { (mark, left) ->
-                    val color = if (mark.turnsOn) c.powerOnText else c.powerOffText
-                    Column(
-                        Modifier.offset(x = left, y = 8.dp).width(SwitchLabelWidth),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            ScheduleMath.formatClock(mark.minute),
-                            color = color,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            if (mark.turnsOn) "включат" else "выключат",
-                            color = color,
-                            fontSize = 10.sp,
-                        )
-                    }
                 }
             }
         }
@@ -705,29 +659,6 @@ private fun GroupChip(
 }
 
 @Composable
-private fun HouseRow(house: HouseStatus) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(if (house.powerOn) LocalSvitloColors.current.powerOn else LocalSvitloColors.current.powerOff),
-        )
-        Spacer(Modifier.width(10.dp))
-        Column {
-            Text(
-                house.address + (house.complex?.let { " · $it" } ?: ""),
-                color = LocalSvitloColors.current.ink,
-                fontSize = 14.sp,
-            )
-            if (!house.powerOn && !house.since.isNullOrBlank()) {
-                Text(house.since, color = LocalSvitloColors.current.muted, fontSize = 11.sp)
-            }
-        }
-    }
-}
-
-@Composable
 private fun SettingRow(title: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(title, color = LocalSvitloColors.current.ink, modifier = Modifier.weight(1f), fontSize = 15.sp, lineHeight = 20.sp)
@@ -762,13 +693,6 @@ private fun Panel(tint: Color? = null, content: @Composable ColumnScope.() -> Un
             .padding(16.dp),
         content = content,
     )
-}
-
-@Composable
-private fun QuietNote(text: String) {
-    Panel {
-        Text(text, color = LocalSvitloColors.current.muted, fontSize = 15.sp, lineHeight = 21.sp)
-    }
 }
 
 @Composable
@@ -827,7 +751,15 @@ private fun daySlices(outages: List<Outage>): List<DaySlice> {
 
 private data class SwitchMark(val minute: Int, val turnsOn: Boolean)
 
-private val SwitchLabelWidth = 68.dp
+private data class PlacedLabel(val mark: SwitchMark, val left: Dp)
+
+private fun hourLabel(minute: Int): String {
+    val hour = minute / 60
+    val rest = minute % 60
+    return if (rest == 0) "%02d".format(hour) else "%02d:%02d".format(hour, rest)
+}
+
+private fun hourLabelWidth(minute: Int): Dp = if (minute % 60 == 0) 28.dp else 46.dp
 
 private fun switchMarks(slices: List<DaySlice>): List<SwitchMark> {
     return slices.mapNotNull { slice ->
@@ -836,16 +768,18 @@ private fun switchMarks(slices: List<DaySlice>): List<SwitchMark> {
     }
 }
 
-private fun placeSwitchLabels(marks: List<SwitchMark>, width: Dp): List<Pair<SwitchMark, Dp>> {
-    val label = SwitchLabelWidth
-    var cursor = 20.dp
-    val limit = (width - label - 20.dp).coerceAtLeast(cursor)
-    return marks.map { mark ->
-        val ideal = width * (mark.minute / 1440f) - label / 2
-        val left = ideal.coerceIn(cursor, limit)
-        cursor = (left + label + 4.dp).coerceAtMost(limit)
-        mark to left
+private fun placeSwitchLabels(marks: List<SwitchMark>, width: Dp): List<PlacedLabel> {
+    var cursor = 0.dp
+    val placed = mutableListOf<PlacedLabel>()
+    for (mark in marks) {
+        val label = hourLabelWidth(mark.minute)
+        val maxLeft = (width - label).coerceAtLeast(0.dp)
+        val ideal = (width * (mark.minute / 1440f) - label / 2).coerceIn(0.dp, maxLeft)
+        if (ideal < cursor) continue
+        cursor = ideal + label + 4.dp
+        placed += PlacedLabel(mark, ideal)
     }
+    return placed
 }
 
 private fun compactDuration(minutes: Int): String {
