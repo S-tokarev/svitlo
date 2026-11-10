@@ -87,6 +87,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         updatePermissions()
+        val stored = SvitloStore(this).loadSnapshot()
+        if (stored != null && stored.fetchedAt != screen.snapshot?.fetchedAt) {
+            screen = screen.copy(snapshot = stored, error = null)
+        }
+        val fresh = screen.snapshot
+        val age = if (fresh == null) Long.MAX_VALUE else System.currentTimeMillis() - fresh.fetchedAt
+        if (age >= 15 * 60 * 1000L && !screen.loading) refresh()
         SvitloWidget.updateAll(this)
     }
 

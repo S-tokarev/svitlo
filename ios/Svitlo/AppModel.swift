@@ -90,6 +90,9 @@ final class AppModel: ObservableObject {
     }
 
     func refreshIfStale() async {
+        if let stored = AppStore.loadSnapshot(), stored.fetchedAt != snapshot?.fetchedAt {
+            snapshot = stored
+        }
         let fetched = snapshot?.fetchedAt ?? 0
         if snapshot == nil || ScheduleMath.millis(Date()) - fetched >= 15 * 60 * 1000 {
             await refresh(manual: false)
