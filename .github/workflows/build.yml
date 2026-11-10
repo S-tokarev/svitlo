@@ -255,10 +255,14 @@ jobs:
           echo "uname=$(uname -m)"
           test "$(uname -m)" = "${{ matrix.arch }}"
           app="desktop/build/compose/binaries/main/app/Svitlo.app"
-          java="$(find "$app" -path '*/bin/java' -type f -print -quit)"
-          test -n "$java"
-          file "$app/Contents/MacOS/Svitlo" "$java"
-          file "$java" | grep -q "${{ matrix.arch }}"
+          launcher="$app/Contents/MacOS/Svitlo"
+          echo "launcher=$(file "$launcher" || true)"
+          if file "$launcher" | grep -q "${{ matrix.arch }}"; then
+            exit 0
+          fi
+          macho="$(find "$app" -type f -exec file {} + | grep -m1 "${{ matrix.arch }}" || true)"
+          echo "macho=$macho"
+          test -n "$macho"
       - name: Архив
         run: ditto -c -k --keepParent desktop/build/compose/binaries/main/app/Svitlo.app "$GITHUB_WORKSPACE/${{ matrix.artifact }}.zip"
       - uses: actions/upload-artifact@v4
