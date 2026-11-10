@@ -41,13 +41,16 @@ jobs:
           yes | sdkmanager --licenses >/dev/null
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Тесты и debug APK
-        run: chmod +x ./gradlew && ./gradlew testDebugUnitTest assembleDebug --stacktrace
+      - name: Тесты и APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew testDebugUnitTest assembleRelease --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk svitlo-android.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: svitlo-android-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: svitlo-android.apk
           if-no-files-found: error
 
   ios:
@@ -216,7 +219,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          apk="$(find dist -name 'app-debug.apk' -print -quit)"
+          apk="$(find dist -name 'svitlo-android.apk' -print -quit)"
           ios="$(find dist -name 'Svitlo-iphonesimulator.zip' -print -quit)"
           ipa="$(find dist -name 'svitlo-iphone.ipa' -print -quit || true)"
           test -n "$apk" && test -n "$ios"
@@ -238,7 +241,7 @@ jobs:
             --notes "$(printf '%s\n' \
               "Сборка коммита ${GITHUB_SHA}." \
               "" \
-              "svitlo-android.apk — debug-сборка, её можно поставить на телефон." \
+              "svitlo-android.apk — сборка для телефона. Если старое Светло не обновляется, удалите его и установите этот файл: раньше каждая сборка GitHub была с новой подписью." \
               "svitlo-iphonesimulator.zip — приложение для симулятора. На iPhone не ставится." \
               "$iphone_note")" \
             "${files[@]}"
