@@ -13,6 +13,7 @@
 output.json
 .kotlin/
 app/build/
+desktop/build/
 
 # Xcode
 xcuserdata/

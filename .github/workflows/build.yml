@@ -196,15 +196,55 @@ jobs:
           path: svitlo-iphone.ipa
           if-no-files-found: error
 
+  desktop-windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Собрать приложение
+        run: ./gradlew.bat :desktop:createDistributable --stacktrace
+      - name: Архив
+        run: Compress-Archive -Path desktop\build\compose\binaries\main\app\Svitlo -DestinationPath svitlo-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: svitlo-windows
+          path: svitlo-windows.zip
+          if-no-files-found: error
+
+  desktop-macos:
+    name: Mac
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Собрать приложение
+        run: ./gradlew :desktop:createDistributable --stacktrace
+      - name: Архив
+        run: ditto -c -k --keepParent desktop/build/compose/binaries/main/app/Svitlo.app "$GITHUB_WORKSPACE/svitlo-macos.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: svitlo-macos
+          path: svitlo-macos.zip
+          if-no-files-found: error
+
   release:
     name: Release
-    needs: [android, ios, ios-device]
+    needs: [android, ios, ios-device, desktop-windows, desktop-macos]
     if: >-
       always() &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       needs.android.result == 'success' &&
       needs.ios.result == 'success' &&
+      needs.desktop-windows.result == 'success' &&
+      needs.desktop-macos.result == 'success' &&
       needs.ios-device.result != 'cancelled' &&
       needs.ios-device.result != 'failure'
     runs-on: ubuntu-latest
@@ -225,7 +265,12 @@ jobs:
           test -n "$apk" && test -n "$ios"
           cp "$apk" svitlo-android.apk
           cp "$ios" svitlo-iphonesimulator.zip
-          files=(svitlo-android.apk svitlo-iphonesimulator.zip)
+          windows="$(find dist -name 'svitlo-windows.zip' -print -quit)"
+          mac="$(find dist -name 'svitlo-macos.zip' -print -quit)"
+          test -n "$windows" && test -n "$mac"
+          cp "$windows" svitlo-windows.zip
+          cp "$mac" svitlo-macos.zip
+          files=(svitlo-android.apk svitlo-iphonesimulator.zip svitlo-windows.zip svitlo-macos.zip)
           iphone_note="Сборки для iPhone нет: в GitHub не заданы секреты подписи Apple."
           if [ -n "$ipa" ]; then
             cp "$ipa" svitlo-iphone.ipa
@@ -243,5 +288,6 @@ jobs:
               "" \
               "svitlo-android.apk — сборка для телефона. Если старое Светло не обновляется, удалите его и установите этот файл: раньше каждая сборка GitHub была с новой подписью." \
               "svitlo-iphonesimulator.zip — приложение для симулятора. На iPhone не ставится." \
+              "svitlo-windows.zip и svitlo-macos.zip — настольное Светло. Закройте окно, программа останется в трее и пришлёт уведомления." \
               "$iphone_note")" \
             "${files[@]}"

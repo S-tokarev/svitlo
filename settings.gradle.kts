@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Svitlo"
 include(":app")
+include(":desktop")
