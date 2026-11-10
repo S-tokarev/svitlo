@@ -195,7 +195,7 @@ class DesktopModel {
 
     fun tooltip(): String {
         val items = watched()
-        if (items.isEmpty() || snapshot == null) return "Светло"
+        if (items.isEmpty() || snapshot == null) return "График света"
         return items.joinToString(" · ") { place ->
             val on = ScheduleMath.picture(snapshot!!, place, now).displayOn
             val name = place.placeLabel ?: place.group

@@ -58,7 +58,7 @@ enum SvitloParser {
         guard !groups.isEmpty else { return nil }
         return DaySchedule(
             day: day,
-            label: format(date, "d MMMM", Locale(identifier: "ru_RU")),
+            label: ScheduleMath.dayLabel(date),
             updatedDate: format(date, "dd.MM.yyyy", Locale(identifier: "en_US_POSIX")),
             updatedTime: "",
             groups: groups,

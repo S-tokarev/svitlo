@@ -97,7 +97,7 @@ fun DesktopApp(model: DesktopModel) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Светло", color = ink, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text("График света", color = ink, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Button(onClick = model::refresh, enabled = !model.loading) {
                 Text(if (model.loading) "Обновление" else "Обновить")
             }
@@ -583,7 +583,7 @@ fun DesktopWidget(model: DesktopModel) {
         Modifier.fillMaxSize().background(paper).verticalScroll(rememberScrollState()).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("Светло", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("График света", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         if (items.isEmpty()) {
             Text("Добавьте адрес в окне программы.", color = muted, fontSize = 13.sp)
         }

@@ -70,7 +70,7 @@ class SvitloWidget : AppWidgetProvider() {
 
             if (selection.group.isBlank() || snapshot == null) {
                 paint(views, R.drawable.widget_bg, 0xFFF6F1E7.toInt(), 0xFFF6F1E7.toInt(), 0xFFB6AB9C.toInt())
-                views.setTextViewText(R.id.widget_kicker, "Светло")
+                views.setTextViewText(R.id.widget_kicker, "График света")
                 views.setTextViewText(R.id.widget_status, "Выберите группу")
                 views.setTextViewText(R.id.widget_next, "Откройте приложение")
                 views.setTextViewText(R.id.widget_updated, "vyshgorod.in.ua/svitlo")

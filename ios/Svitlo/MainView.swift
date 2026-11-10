@@ -39,7 +39,7 @@ struct MainView: View {
 
     private var header: some View {
         HStack(alignment: .center) {
-            Text("Светло")
+            Text("График света")
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(palette.ink)
             Spacer()

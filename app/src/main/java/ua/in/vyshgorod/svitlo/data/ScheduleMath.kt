@@ -51,6 +51,18 @@ object ScheduleMath {
 
     private val dateFormat = DateTimeFormatter.ofPattern("dd.MM.yyyy")
     private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
+    private val ruMonths = arrayOf(
+        "января", "февраля", "марта", "апреля", "мая", "июня",
+        "июля", "августа", "сентября", "октября", "ноября", "декабря",
+    )
+
+    /** Day title such as "10 ноября". Month names are fixed so a desktop runtime without Russian locale data cannot print "Nov". */
+    fun dayLabel(date: LocalDate): String = "${date.dayOfMonth} ${ruMonths[date.monthValue - 1]}"
+
+    fun dayLabel(updatedDate: String): String {
+        val date = parseDate(updatedDate) ?: return ""
+        return dayLabel(date)
+    }
 
     fun picture(snapshot: Snapshot, selection: Selection, now: Long): PowerPicture {
         val todaySchedule = snapshot.days.firstOrNull { it.day == "today" }
@@ -140,7 +152,8 @@ object ScheduleMath {
             outagesToday = shownToday,
             outagesTomorrow = shownTomorrow,
             scheduleDate = scheduleDate,
-            scheduleLabel = todaySchedule?.label.orEmpty(),
+            scheduleLabel = todaySchedule?.updatedDate?.let { dayLabel(it) }.orEmpty()
+                .ifBlank { todaySchedule?.label.orEmpty() },
             updatedLabel = todaySchedule?.groupUpdated?.get(group)?.takeIf { it.isNotBlank() }
                 ?: listOf(todaySchedule?.updatedDate, todaySchedule?.updatedTime)
                     .filter { !it.isNullOrBlank() }

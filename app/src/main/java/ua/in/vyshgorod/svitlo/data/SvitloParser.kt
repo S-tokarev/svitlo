@@ -23,7 +23,6 @@ object SvitloParser {
         RegexOption.DOT_MATCHES_ALL,
     )
     private val dayDate = DateTimeFormatter.ofPattern("dd.MM.yyyy")
-    private val labelFormat = DateTimeFormatter.ofPattern("d MMMM", Locale.forLanguageTag("ru"))
     private val months = mapOf(
         "січня" to 1, "лютого" to 2, "березня" to 3, "квітня" to 4, "травня" to 5, "червня" to 6,
         "липня" to 7, "серпня" to 8, "вересня" to 9, "жовтня" to 10, "листопада" to 11, "грудня" to 12,
@@ -82,7 +81,7 @@ object SvitloParser {
         if (groups.isEmpty()) return null
         return DaySchedule(
             day = day,
-            label = date.format(labelFormat),
+            label = ScheduleMath.dayLabel(date),
             updatedDate = date.format(dayDate),
             updatedTime = "",
             groups = groups,

@@ -53,7 +53,7 @@ struct Provider: TimelineProvider {
             return WidgetEntry(
                 date: date, background: Color(hex: 0x22201C), statusColor: Color(hex: 0xF6F1E7),
                 ink: Color(hex: 0xF6F1E7), muted: Color(hex: 0xB6AB9C),
-                kicker: "Светло", status: "Выберите группу", next: "Откройте приложение",
+                kicker: "График света", status: "Выберите группу", next: "Откройте приложение",
                 footer: "vyshgorod.in.ua/svitlo", slices: [], nowMin: nil
             )
         }
@@ -158,7 +158,7 @@ struct SvitloWidget: Widget {
         StaticConfiguration(kind: "svitlo", provider: Provider()) { entry in
             SvitloWidgetView(entry: entry)
         }
-        .configurationDisplayName("Светло")
+        .configurationDisplayName("График света")
         .description("Статус света выбранной группы по графику ДТЕК")
         .supportedFamilies([.systemSmall, .systemMedium])
     }

@@ -17,6 +17,7 @@ import java.awt.SystemTray
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 
@@ -30,6 +31,7 @@ fun main() {
         val open = remember { mutableStateOf(true) }
         val front = remember { mutableStateOf(0) }
         val windowState = rememberWindowState(width = 980.dp, height = 860.dp)
+        val icon = remember { BitmapPainter(appIcon().toComposeImageBitmap()) }
         val widgetOpen = remember { mutableStateOf(DesktopStore.widgetOpen()) }
         val lastShow = remember { longArrayOf(0L) }
         fun show() {
@@ -52,7 +54,8 @@ fun main() {
             if (!SystemTray.isSupported()) return@LaunchedEffect
             val tray = SystemTray.getSystemTray()
             repeat(30) {
-                val icon = tray.trayIcons.firstOrNull { it.toolTip == "Светло" }
+                val wanted = model.tooltip()
+                val icon = tray.trayIcons.firstOrNull { it.toolTip == wanted }
                 if (icon != null) {
                     icon.addMouseListener(object : MouseAdapter() {
                         override fun mousePressed(event: MouseEvent) = openIfLeft(event)
@@ -69,7 +72,7 @@ fun main() {
         }
         Tray(
             state = trayState,
-            icon = BitmapPainter(trayImage().toComposeImageBitmap()),
+            icon = icon,
             tooltip = model.tooltip(),
             onAction = { show() },
             menu = {
@@ -84,7 +87,8 @@ fun main() {
         )
         Window(
             onCloseRequest = { open.value = false },
-            title = "Светло",
+            title = "График света",
+            icon = icon,
             state = windowState,
             visible = open.value,
         ) {
@@ -109,7 +113,8 @@ fun main() {
                     widgetOpen.value = false
                     DesktopStore.setWidgetOpen(false)
                 },
-                title = "Светло",
+                title = "График света",
+                icon = icon,
                 alwaysOnTop = true,
                 state = rememberWindowState(width = 400.dp, height = 680.dp),
             ) {
@@ -117,6 +122,11 @@ fun main() {
             }
         }
     }
+}
+
+private fun appIcon(): BufferedImage {
+    val image = Thread.currentThread().contextClassLoader.getResourceAsStream("icon.png")?.use { ImageIO.read(it) }
+    return image ?: trayImage()
 }
 
 private fun trayImage(): BufferedImage {

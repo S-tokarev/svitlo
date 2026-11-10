@@ -102,7 +102,7 @@ fun MainScreen(
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Светло", color = LocalSvitloColors.current.ink, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                    Text("График света", color = LocalSvitloColors.current.ink, fontSize = 34.sp, fontWeight = FontWeight.Bold)
                 }
                 if (state.loading) {
                     CircularProgressIndicator(

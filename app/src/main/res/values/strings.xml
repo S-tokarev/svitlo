@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">Светло</string>
+    <string name="app_name">График света</string>
     <string name="widget_description">Статус света выбранной группы по графику ДТЕК</string>
 </resources>

@@ -9,7 +9,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>ru</string>
 	<key>CFBundleDisplayName</key>
-	<string>Светло</string>
+	<string>График света</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -29,7 +29,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSUserNotificationsUsageDescription</key>
-	<string>Светло предупреждает за 10 минут до отключения и сообщает, когда по графику свет включили.</string>
+	<string>График света предупреждает за 10 минут до отключения и сообщает, когда по графику свет включили.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

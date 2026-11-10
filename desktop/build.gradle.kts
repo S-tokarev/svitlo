@@ -38,10 +38,19 @@ compose.desktop {
             vendor = "Svitlo"
             macOS {
                 bundleID = "ua.in.vyshgorod.svitlo.desktop"
+                iconFile.set(project.file("icons/icon.icns"))
+                dockName = "График света"
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>CFBundleDisplayName</key>
+                        <string>График света</string>
+                    """.trimIndent()
+                }
             }
             windows {
                 menu = true
                 shortcut = true
+                iconFile.set(project.file("icons/icon.ico"))
             }
         }
     }

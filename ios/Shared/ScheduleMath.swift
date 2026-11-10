@@ -10,6 +10,26 @@ enum ScheduleMath {
     private static let liveFreshMs: Int64 = 20 * 60 * 1000
     private static let mergeMs: Int64 = 20 * 60 * 1000
 
+    static func dayLabel(_ date: Date) -> String {
+        let parts = calendar().dateComponents([.day, .month], from: date)
+        return dayLabel(day: parts.day ?? 1, month: parts.month ?? 0)
+    }
+
+    static func dayLabel(_ updatedDate: String) -> String {
+        let parts = updatedDate.split(separator: ".")
+        guard parts.count >= 2, let day = Int(parts[0]), let month = Int(parts[1]) else { return "" }
+        return dayLabel(day: day, month: month)
+    }
+
+    private static func dayLabel(day: Int, month: Int) -> String {
+        let months = [
+            "января", "февраля", "марта", "апреля", "мая", "июня",
+            "июля", "августа", "сентября", "октября", "ноября", "декабря",
+        ]
+        guard month >= 1, month <= months.count else { return "" }
+        return "\(day) \(months[month - 1])"
+    }
+
     static func calendar() -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = zone
@@ -102,7 +122,9 @@ enum ScheduleMath {
             appearAts: onMoments.sorted(),
             outagesToday: shownToday,
             outagesTomorrow: shownTomorrow,
-            scheduleLabel: todaySchedule?.label ?? "",
+            scheduleLabel: dayLabel(todaySchedule?.updatedDate ?? "").nilIfBlank
+                ?? todaySchedule?.label
+                ?? "",
             updatedLabel: updated,
             usingHouse: house != nil
         )
