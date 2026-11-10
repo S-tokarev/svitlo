@@ -304,42 +304,54 @@ struct DayTrack: View {
     }
 
     private func marks(_ slices: [DaySlice]) -> some View {
-        let items = slices.compactMap { slice -> (minute: Int, powerOn: Bool)? in
+        let switches = slices.compactMap { slice -> (minute: Int, powerOn: Bool)? in
             guard (1..<1440).contains(slice.start) else { return nil }
             return (slice.start, slice.powerOn)
         }
-        return VStack(spacing: 2) {
-            GeometryReader { geo in
-                let shown = visibleHours(items, width: geo.size.width)
-                ZStack(alignment: .topLeading) {
-                    Text("00").font(.caption2).foregroundStyle(palette.muted)
-                    Text("24").font(.caption2).foregroundStyle(palette.muted)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    ForEach(shown, id: \.minute) { item in
-                        Text(shortHour(item.minute))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(item.powerOn ? palette.powerOnText : palette.powerOffText)
-                            .position(x: geo.size.width * CGFloat(item.minute) / 1440, y: 8)
-                    }
+        return GeometryReader { geo in
+            let placed = placedHours(switches, width: geo.size.width)
+            ZStack(alignment: .topLeading) {
+                ForEach(placed, id: \.minute) { item in
+                    Text(item.text)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(item.powerOn.map { $0 ? palette.powerOnText : palette.powerOffText } ?? palette.muted)
+                        .fixedSize()
+                        .offset(x: item.left)
                 }
             }
-            .frame(height: 18)
         }
+        .frame(height: 18)
     }
 
     private func shortHour(_ minute: Int) -> String {
         minute % 60 == 0 ? String(format: "%02d", minute / 60) : String(format: "%02d:%02d", minute / 60, minute % 60)
     }
 
-    private func visibleHours(_ items: [(minute: Int, powerOn: Bool)], width: CGFloat) -> [(minute: Int, powerOn: Bool)] {
-        var lastRight: CGFloat = -100
-        return items.filter { item in
-            let text = shortHour(item.minute)
-            let labelWidth = CGFloat(text.count) * 8
-            let left = width * CGFloat(item.minute) / 1440 - labelWidth / 2
-            guard left >= lastRight + 4, left + labelWidth <= width else { return false }
-            lastRight = left + labelWidth
-            return true
+    private func placedHours(_ switches: [(minute: Int, powerOn: Bool)], width: CGFloat) -> [(minute: Int, text: String, powerOn: Bool?, left: CGFloat)] {
+        var items: [(minute: Int, text: String, powerOn: Bool?)] = [(0, "00", nil)]
+        items += switches.map { ($0.minute, shortHour($0.minute), Optional($0.powerOn)) }
+        items.append((1440, "24", nil))
+        let widths = items.map { CGFloat($0.text.count) * 8 + 2 }
+        let gap: CGFloat = 4
+        var lefts = items.enumerated().map { index, item in
+            let ideal = width * CGFloat(item.minute) / 1440 - widths[index] / 2
+            return min(max(0, ideal), max(0, width - widths[index]))
+        }
+        for index in 1..<lefts.count {
+            let minLeft = lefts[index - 1] + widths[index - 1] + gap
+            if lefts[index] < minLeft { lefts[index] = minLeft }
+        }
+        let overflow = lefts[lefts.count - 1] + widths[widths.count - 1] - width
+        if overflow > 0 {
+            for index in lefts.indices { lefts[index] -= overflow }
+        }
+        if lefts[0] < 0 {
+            let shift = -lefts[0]
+            for index in lefts.indices { lefts[index] += shift }
+        }
+        return zip(items, lefts).compactMap { item, left in
+            guard left >= -1, left + (CGFloat(item.text.count) * 8) <= width + 1 else { return nil }
+            return (item.minute, item.text, item.powerOn, left)
         }
     }
 

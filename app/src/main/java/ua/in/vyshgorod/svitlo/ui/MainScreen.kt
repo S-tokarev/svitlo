@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -490,7 +491,22 @@ private fun DayTrack(slices: List<DaySlice>, nowMin: Int?) {
     val offInk = c.onPowerOff
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val trackWidth = maxWidth
-        val placed = remember(marks, trackWidth) { placeSwitchLabels(marks, trackWidth) }
+        val labelStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        val chips = listOf(HourChip("00", 0, null)) +
+            marks.map { HourChip(hourLabel(it.minute), it.minute, it.turnsOn) } +
+            HourChip("24", 1440, null)
+        val measured = chips.map { measurer.measure(it.text, style = labelStyle) }
+        val density = LocalDensity.current
+        val lefts = with(density) {
+            val trackPx = trackWidth.toPx()
+            val gapPx = 4.dp.toPx()
+            val widths = measured.map { it.size.width.toFloat() }
+            spreadHourLabels(chips.map { it.minute }, widths, trackPx, gapPx)
+                .map { it.toDp() }
+        }
+        val rowHeight = with(density) {
+            measured.maxOf { it.size.height }.toDp().coerceAtLeast(16.dp)
+        }
         Column {
             Box(
                 Modifier
@@ -536,22 +552,21 @@ private fun DayTrack(slices: List<DaySlice>, nowMin: Int?) {
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Box(Modifier.fillMaxWidth().height(18.dp)) {
-                Text("00", color = c.muted, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterStart))
-                Text("24", color = c.muted, fontSize = 11.sp, modifier = Modifier.align(Alignment.CenterEnd))
-                placed.forEach { item ->
+            Box(Modifier.fillMaxWidth().height(rowHeight)) {
+                chips.forEachIndexed { index, chip ->
+                    val left = lefts[index]
+                    if (left < 0.dp || left >= trackWidth) return@forEachIndexed
                     Text(
-                        hourLabel(item.mark.minute),
-                        color = if (item.mark.turnsOn) c.powerOnText else c.powerOffText,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
+                        chip.text,
+                        color = when (chip.turnsOn) {
+                            true -> c.powerOnText
+                            false -> c.powerOffText
+                            null -> c.muted
+                        },
+                        style = labelStyle,
                         maxLines = 1,
                         softWrap = false,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .offset(x = item.left)
-                            .width(hourLabelWidth(item.mark.minute)),
+                        modifier = Modifier.offset(x = left),
                     )
                 }
             }
@@ -751,15 +766,13 @@ private fun daySlices(outages: List<Outage>): List<DaySlice> {
 
 private data class SwitchMark(val minute: Int, val turnsOn: Boolean)
 
-private data class PlacedLabel(val mark: SwitchMark, val left: Dp)
+private data class HourChip(val text: String, val minute: Int, val turnsOn: Boolean?)
 
 private fun hourLabel(minute: Int): String {
     val hour = minute / 60
     val rest = minute % 60
     return if (rest == 0) "%02d".format(hour) else "%02d:%02d".format(hour, rest)
 }
-
-private fun hourLabelWidth(minute: Int): Dp = if (minute % 60 == 0) 28.dp else 46.dp
 
 private fun switchMarks(slices: List<DaySlice>): List<SwitchMark> {
     return slices.mapNotNull { slice ->
@@ -768,18 +781,43 @@ private fun switchMarks(slices: List<DaySlice>): List<SwitchMark> {
     }
 }
 
-private fun placeSwitchLabels(marks: List<SwitchMark>, width: Dp): List<PlacedLabel> {
-    var cursor = 0.dp
-    val placed = mutableListOf<PlacedLabel>()
-    for (mark in marks) {
-        val label = hourLabelWidth(mark.minute)
-        val maxLeft = (width - label).coerceAtLeast(0.dp)
-        val ideal = (width * (mark.minute / 1440f) - label / 2).coerceIn(0.dp, maxLeft)
-        if (ideal < cursor) continue
-        cursor = ideal + label + 4.dp
-        placed += PlacedLabel(mark, ideal)
-    }
+private fun spreadHourLabels(minutes: List<Int>, widths: List<Float>, track: Float, gap: Float): FloatArray {
+    val packed = packHourLabels(minutes, widths, track, gap)
+    val fits = packed.isNotEmpty() && packed[0] >= -1f && packed.last() + widths.last() <= track + 1f
+    if (fits || minutes.size <= 2) return packed
+    val innerMinutes = minutes.drop(1).dropLast(1)
+    val innerWidths = widths.drop(1).dropLast(1)
+    val inner = packHourLabels(innerMinutes, innerWidths, track, gap)
+    val placed = FloatArray(minutes.size)
+    placed[0] = -widths[0] - gap
+    for (index in inner.indices) placed[index + 1] = inner[index]
+    placed[placed.lastIndex] = track + gap
     return placed
+}
+
+private fun packHourLabels(minutes: List<Int>, widths: List<Float>, track: Float, gap: Float): FloatArray {
+    if (minutes.isEmpty()) return FloatArray(0)
+    val lefts = FloatArray(minutes.size) { index ->
+        val ideal = track * minutes[index] / 1440f - widths[index] / 2f
+        ideal.coerceIn(0f, (track - widths[index]).coerceAtLeast(0f))
+    }
+    for (index in 1 until lefts.size) {
+        val minLeft = lefts[index - 1] + widths[index - 1] + gap
+        if (lefts[index] < minLeft) lefts[index] = minLeft
+    }
+    val overflow = lefts.last() + widths.last() - track
+    if (overflow > 0f) {
+        for (index in lefts.indices) lefts[index] -= overflow
+    }
+    if (lefts[0] < 0f) {
+        val shift = -lefts[0]
+        for (index in lefts.indices) lefts[index] += shift
+    }
+    for (index in 1 until lefts.size) {
+        val minLeft = lefts[index - 1] + widths[index - 1] + gap
+        if (lefts[index] < minLeft) lefts[index] = minLeft
+    }
+    return lefts
 }
 
 private fun compactDuration(minutes: Int): String {
