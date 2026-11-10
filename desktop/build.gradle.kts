@@ -34,7 +34,7 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Svitlo"
             packageVersion = "1.1.0"
-            description = "График света ДТЕК по Киевской области"
+            description = "Svitlo"
             vendor = "Svitlo"
             macOS {
                 bundleID = "ua.in.vyshgorod.svitlo.desktop"

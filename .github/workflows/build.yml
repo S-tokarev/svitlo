@@ -206,7 +206,16 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Собрать приложение
-        run: ./gradlew.bat :desktop:createDistributable --stacktrace
+        run: |
+          ./gradlew.bat :desktop:createDistributable --stacktrace
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Get-ChildItem desktop\build\compose\logs -Recurse -Filter *.txt -ErrorAction SilentlyContinue | ForEach-Object {
+              Write-Output "==== $($_.Name) ===="
+              Get-Content $_.FullName
+            }
+          }
+          exit $code
       - name: Архив
         run: Compress-Archive -Path desktop\build\compose\binaries\main\app\Svitlo -DestinationPath svitlo-windows.zip
       - uses: actions/upload-artifact@v4
