@@ -12,7 +12,9 @@
 2. Дождитесь синхронизации Gradle.
 3. Запустите конфигурацию `app` на телефоне или эмуляторе.
 
-Сборка Android и iPhone запускается в GitHub Actions на каждый push в `main`. Готовые файлы публикуются в [Releases](https://github.com/S-tokarev/svitlo/releases) как «Последняя сборка»: `svitlo-android.apk` и `svitlo-iphonesimulator.zip`. GitHub Packages для этого не используется.
+Сборка Android и iPhone запускается в GitHub Actions на каждый push в `main`. Готовые файлы публикуются в [Releases](https://github.com/S-tokarev/svitlo/releases) как «Последняя сборка»: `svitlo-android.apk` и `svitlo-iphonesimulator.zip`. Файл для настоящего iPhone (`svitlo-iphone.ipa`) появляется только после подписи Apple. GitHub Packages для этого не используется.
+
+Подпись Apple GitHub сам не выдаёт. Нужен аккаунт [Apple Developer](https://developer.apple.com) и секреты репозитория: `APPLE_TEAM_ID`, `APPLE_CERTIFICATE_P12`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE`, `APPLE_WIDGET_PROVISIONING_PROFILE`. В профилях должны быть ваш iPhone и App Group `group.ua.in.vyshgorod.svitlo`. Без этого поставить сборку из GitHub на iPhone нельзя. На Mac её можно подписать своим Apple ID прямо в Xcode.
 
 При первом запуске разрешите уведомления. Если телефон агрессивно гасит фон, нажмите «Разрешить работу в фоне» — иначе предупреждение за 10 минут может опоздать. Не смахивайте приложение из списка «принудительно остановить»: после этого Android снимает будильники, пока вы снова не откроете приложение.
 

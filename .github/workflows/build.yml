@@ -81,10 +81,129 @@ jobs:
           path: Svitlo-iphonesimulator.zip
           if-no-files-found: error
 
+  ios-device:
+    name: iPhone для телефона
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Есть ли сертификат Apple
+        id: sign
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          WIDGET_PROFILE: ${{ secrets.APPLE_WIDGET_PROVISIONING_PROFILE }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$CERT" ] && [ -n "$PASSWORD" ] && [ -n "$PROFILE" ] && [ -n "$WIDGET_PROFILE" ] && [ -n "$TEAM" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Секреты Apple не заданы. Сборку для телефона пропускаю."
+          fi
+
+      - name: Подписать и собрать IPA
+        if: steps.sign.outputs.enabled == 'true'
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
+          APPLE_WIDGET_PROVISIONING_PROFILE: ${{ secrets.APPLE_WIDGET_PROVISIONING_PROFILE }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_EXPORT_METHOD: ${{ secrets.APPLE_EXPORT_METHOD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
+          identities="$(security find-identity -v -p codesigning "$KEYCHAIN")"
+          echo "$identities"
+          if printf '%s\n' "$identities" | grep -q "Apple Distribution"; then
+            identity="Apple Distribution"
+            method="${APPLE_EXPORT_METHOD:-ad-hoc}"
+          elif printf '%s\n' "$identities" | grep -q "Apple Development"; then
+            identity="Apple Development"
+            method="${APPLE_EXPORT_METHOD:-development}"
+          else
+            echo "В сертификате нет личности Apple Development или Apple Distribution."
+            exit 1
+          fi
+          install_profile() {
+            local encoded="$1"
+            local file="$2"
+            printf '%s' "$encoded" | base64 --decode > "$file"
+            local uuid name
+            uuid="$(security cms -D -i "$file" | plutil -extract UUID raw -)"
+            name="$(security cms -D -i "$file" | plutil -extract Name raw - | tr -d '\n')"
+            mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+            cp "$file" "$HOME/Library/MobileDevice/Provisioning Profiles/${uuid}.mobileprovision"
+            printf '%s' "$name"
+          }
+          app_profile="$(install_profile "$APPLE_PROVISIONING_PROFILE" "$RUNNER_TEMP/app.mobileprovision")"
+          widget_profile="$(install_profile "$APPLE_WIDGET_PROVISIONING_PROFILE" "$RUNNER_TEMP/widget.mobileprovision")"
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${method}</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>ua.in.vyshgorod.svitlo</key>
+              <string>${app_profile}</string>
+              <key>ua.in.vyshgorod.svitlo.widget</key>
+              <string>${widget_profile}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild archive \
+            -project ios/Svitlo.xcodeproj \
+            -scheme Svitlo \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/Svitlo.xcarchive" \
+            CODE_SIGN_STYLE=Manual \
+            "DEVELOPMENT_TEAM=${APPLE_TEAM_ID}" \
+            "CODE_SIGN_IDENTITY=${identity}" \
+            OTHER_CODE_SIGN_FLAGS="--keychain ${KEYCHAIN}"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Svitlo.xcarchive" \
+            -exportPath "$RUNNER_TEMP/ipa" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          cp "$RUNNER_TEMP/ipa/"*.ipa svitlo-iphone.ipa
+          security delete-keychain "$KEYCHAIN"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.sign.outputs.enabled == 'true'
+        with:
+          name: svitlo-iphone
+          path: svitlo-iphone.ipa
+          if-no-files-found: error
+
   release:
     name: Release
-    needs: [android, ios]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [android, ios, ios-device]
+    if: >-
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      needs.android.result == 'success' &&
+      needs.ios.result == 'success' &&
+      needs.ios-device.result != 'cancelled' &&
+      needs.ios-device.result != 'failure'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -99,9 +218,17 @@ jobs:
         run: |
           apk="$(find dist -name 'app-debug.apk' -print -quit)"
           ios="$(find dist -name 'Svitlo-iphonesimulator.zip' -print -quit)"
+          ipa="$(find dist -name 'svitlo-iphone.ipa' -print -quit || true)"
           test -n "$apk" && test -n "$ios"
           cp "$apk" svitlo-android.apk
           cp "$ios" svitlo-iphonesimulator.zip
+          files=(svitlo-android.apk svitlo-iphonesimulator.zip)
+          iphone_note="Сборки для iPhone нет: в GitHub не заданы секреты подписи Apple."
+          if [ -n "$ipa" ]; then
+            cp "$ipa" svitlo-iphone.ipa
+            files+=(svitlo-iphone.ipa)
+            iphone_note="svitlo-iphone.ipa — сборка для зарегистрированных устройств Apple."
+          fi
           gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
           gh release create latest \
             --repo "$GITHUB_REPOSITORY" \
@@ -112,8 +239,6 @@ jobs:
               "Сборка коммита ${GITHUB_SHA}." \
               "" \
               "svitlo-android.apk — debug-сборка, её можно поставить на телефон." \
-              "svitlo-iphonesimulator.zip — приложение для симулятора, без подписи Apple. На iPhone не ставится." \
-              "" \
-              "GitHub Packages не используется: туда кладут пакеты Maven, npm и Docker, а не готовые приложения.")" \
-            svitlo-android.apk \
-            svitlo-iphonesimulator.zip
+              "svitlo-iphonesimulator.zip — приложение для симулятора. На iPhone не ставится." \
+              "$iphone_note")" \
+            "${files[@]}"
