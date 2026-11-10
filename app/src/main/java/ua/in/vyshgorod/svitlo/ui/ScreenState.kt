@@ -9,6 +9,7 @@ data class ScreenState(
     val loading: Boolean = false,
     val error: String? = null,
     val selection: Selection = Selection(),
+    val places: List<Selection> = emptyList(),
     val snapshot: Snapshot? = null,
     val query: String = "",
     val results: List<AddressHit> = emptyList(),

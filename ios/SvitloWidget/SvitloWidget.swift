@@ -128,12 +128,16 @@ struct SvitloWidgetView: View {
                         }
                         .frame(height: 8)
                         .clipShape(RoundedRectangle(cornerRadius: 3))
-                        ZStack {
-                            ForEach(widgetHours(entry.slices, width: geo.size.width), id: \.start) { slice in
-                                Text(slice.start % 60 == 0 ? String(format: "%02d", slice.start / 60) : String(format: "%02d:%02d", slice.start / 60, slice.start % 60))
+                        let labels = widgetHourLabels(entry.slices)
+                        let widths = labels.map { CGFloat($0.text.count) * 6 + 1 }
+                        let lefts = ScheduleMath.placeHourLabels(minutes: labels.map(\.minute), widths: widths, track: geo.size.width, gap: 2)
+                        ZStack(alignment: .topLeading) {
+                            ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
+                                Text(label.text)
                                     .font(.system(size: 9, weight: .semibold))
                                     .foregroundStyle(entry.ink)
-                                    .position(x: geo.size.width * CGFloat(slice.start) / 1440, y: 6)
+                                    .fixedSize()
+                                    .offset(x: lefts[index])
                             }
                         }
                         .frame(height: 12)
@@ -165,17 +169,14 @@ struct SvitloWidgetBundle: WidgetBundle {
     var body: some Widget { SvitloWidget() }
 }
 
-private func widgetHours(_ slices: [ScaleSlice], width: CGFloat) -> [ScaleSlice] {
-    var lastRight: CGFloat = -100
-    return slices.filter { slice in
-        guard (1..<1440).contains(slice.start) else { return false }
+private func widgetHourLabels(_ slices: [ScaleSlice]) -> [(minute: Int, text: String)] {
+    var labels: [(minute: Int, text: String)] = [(0, "00")]
+    for slice in slices where (1..<1440).contains(slice.start) {
         let text = slice.start % 60 == 0 ? String(format: "%02d", slice.start / 60) : String(format: "%02d:%02d", slice.start / 60, slice.start % 60)
-        let labelWidth = CGFloat(text.count) * 6
-        let left = width * CGFloat(slice.start) / 1440 - labelWidth / 2
-        guard left >= lastRight + 3, left + labelWidth <= width else { return false }
-        lastRight = left + labelWidth
-        return true
+        labels.append((slice.start, text))
     }
+    labels.append((1440, "24"))
+    return labels
 }
 
 private func scaleSlices(_ outages: [Outage]) -> [ScaleSlice] {

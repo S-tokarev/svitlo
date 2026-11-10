@@ -47,14 +47,55 @@ object DesktopStore {
         )
     }
 
-    fun saveSelection(selection: Selection) {
+    fun loadPlaces(): List<Selection> {
         val json = read()
-        json.put("group", selection.group)
-        json.put("street", selection.street ?: "")
-        json.put("house", selection.house ?: "")
-        json.put("city", selection.city ?: "")
-        json.remove("lastOn")
-        json.put("notified", JSONArray())
+        val array = json.optJSONArray("places")
+        if (array != null) {
+            return (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                Selection(
+                    group = item.optString("group"),
+                    street = item.optString("street").ifBlank { null },
+                    house = item.optString("house").ifBlank { null },
+                    city = item.optString("city").ifBlank { null },
+                ).takeIf { it.group.isNotBlank() }
+            }
+        }
+        val one = loadSelection()
+        return if (one.group.isBlank()) emptyList() else listOf(one)
+    }
+
+    fun savePlaces(places: List<Selection>, focus: Selection) {
+        val json = read()
+        val array = JSONArray()
+        places.filter { it.group.isNotBlank() }.forEach { place ->
+            array.put(
+                JSONObject()
+                    .put("group", place.group)
+                    .put("street", place.street ?: "")
+                    .put("house", place.house ?: "")
+                    .put("city", place.city ?: ""),
+            )
+        }
+        json.put("places", array)
+        json.put("group", focus.group)
+        json.put("street", focus.street ?: "")
+        json.put("house", focus.house ?: "")
+        json.put("city", focus.city ?: "")
+        write(json)
+    }
+
+    fun saveSelection(selection: Selection) {
+        val places = loadPlaces().filterNot { it.placeKey == selection.placeKey }.toMutableList()
+        if (selection.group.isNotBlank()) places += selection
+        savePlaces(places.takeLast(8), selection)
+    }
+
+    fun widgetOpen() = read().optBoolean("widget", false)
+
+    fun setWidgetOpen(open: Boolean) {
+        val json = read()
+        json.put("widget", open)
         write(json)
     }
 
@@ -76,15 +117,25 @@ object DesktopStore {
     fun setQuiet(value: Boolean) = put("quiet", value)
     fun setTheme(mode: ThemeMode) = put("theme", mode.stored)
 
-    fun lastDisplayOn(): Boolean? {
+    fun lastDisplayOn(placeKey: String): Boolean? {
         val json = read()
+        val map = json.optJSONObject("lastOns")
+        if (map != null) {
+            if (!map.has(placeKey) || map.isNull(placeKey)) return null
+            return map.optBoolean(placeKey)
+        }
         if (!json.has("lastOn") || json.isNull("lastOn")) return null
+        val only = loadPlaces().singleOrNull()
+        if (only?.placeKey != placeKey) return null
         return json.optBoolean("lastOn")
     }
 
-    fun setLastDisplayOn(on: Boolean?) {
+    fun setLastDisplayOn(placeKey: String, on: Boolean?) {
         val json = read()
-        if (on == null) json.remove("lastOn") else json.put("lastOn", on)
+        val map = json.optJSONObject("lastOns") ?: JSONObject()
+        if (on == null) map.remove(placeKey) else map.put(placeKey, on)
+        json.put("lastOns", map)
+        json.remove("lastOn")
         write(json)
     }
 

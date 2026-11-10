@@ -286,6 +286,40 @@ enum ScheduleMath {
             .replacingOccurrences(of: "-", with: "")
             .replacingOccurrences(of: ".", with: "")
     }
+
+    static func placeHourLabels(minutes: [Int], widths: [CGFloat], track: CGFloat, gap: CGFloat) -> [CGFloat] {
+        let count = minutes.count
+        guard count > 0 else { return [] }
+        let safeTrack = max(track, 1)
+        var lefts = Array(repeating: CGFloat(0), count: count)
+        lefts[0] = min(max(0, safeTrack * CGFloat(minutes[0]) / 1440 - widths[0] / 2), max(0, safeTrack - widths[0]))
+        for index in 1..<count {
+            let ideal = safeTrack * CGFloat(minutes[index]) / 1440 - widths[index] / 2
+            let minLeft = lefts[index - 1] + widths[index - 1] + gap
+            lefts[index] = max(ideal, minLeft)
+        }
+        let overflow = lefts[count - 1] + widths[count - 1] - safeTrack
+        if overflow > 0 {
+            lefts[count - 1] = max(0, safeTrack - widths[count - 1])
+            if count >= 2 {
+                for index in stride(from: count - 2, through: 0, by: -1) {
+                    let maxLeft = lefts[index + 1] - gap - widths[index]
+                    if lefts[index] > maxLeft { lefts[index] = maxLeft }
+                }
+            }
+        }
+        if lefts[0] < 0 {
+            let total = widths.reduce(0, +)
+            let free = max(0, safeTrack - total)
+            let step = count > 1 ? free / CGFloat(count - 1) : 0
+            var cursor: CGFloat = 0
+            for index in 0..<count {
+                lefts[index] = cursor
+                cursor += widths[index] + step
+            }
+        }
+        return lefts
+    }
 }
 
 private extension String {

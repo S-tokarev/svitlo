@@ -30,6 +30,7 @@ fun main() {
         val open = remember { mutableStateOf(true) }
         val front = remember { mutableStateOf(0) }
         val windowState = rememberWindowState(width = 980.dp, height = 860.dp)
+        val widgetOpen = remember { mutableStateOf(DesktopStore.widgetOpen()) }
         val lastShow = remember { longArrayOf(0L) }
         fun show() {
             val now = System.currentTimeMillis()
@@ -69,9 +70,13 @@ fun main() {
         Tray(
             state = trayState,
             icon = BitmapPainter(trayImage().toComposeImageBitmap()),
-            tooltip = "Светло",
+            tooltip = model.tooltip(),
             onAction = { show() },
             menu = {
+                Item(if (widgetOpen.value) "Скрыть виджет" else "Виджет") {
+                    widgetOpen.value = !widgetOpen.value
+                    DesktopStore.setWidgetOpen(widgetOpen.value)
+                }
                 Item("Открыть") { show() }
                 Item("Обновить") { model.refresh() }
                 Item("Выход", onClick = ::exitApplication)
@@ -97,6 +102,19 @@ fun main() {
                 frame.isAlwaysOnTop = false
             }
             DesktopApp(model)
+        }
+        if (widgetOpen.value) {
+            Window(
+                onCloseRequest = {
+                    widgetOpen.value = false
+                    DesktopStore.setWidgetOpen(false)
+                },
+                title = "Светло",
+                alwaysOnTop = true,
+                state = rememberWindowState(width = 400.dp, height = 680.dp),
+            ) {
+                DesktopWidget(model)
+            }
         }
     }
 }

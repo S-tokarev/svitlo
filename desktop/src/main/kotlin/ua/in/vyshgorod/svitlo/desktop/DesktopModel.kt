@@ -21,6 +21,7 @@ import ua.`in`.vyshgorod.svitlo.data.SvitloParser
 
 class DesktopModel {
     var selection by mutableStateOf(DesktopStore.loadSelection())
+    var places by mutableStateOf(DesktopStore.loadPlaces())
     var snapshot by mutableStateOf(DesktopStore.loadSnapshot())
     var theme by mutableStateOf(DesktopStore.theme())
     var warn by mutableStateOf(DesktopStore.warnEnabled())
@@ -78,9 +79,20 @@ class DesktopModel {
 
     fun selectGroup(group: String) {
         selection = Selection(group)
-        DesktopStore.saveSelection(selection)
+        DesktopStore.savePlaces(places, selection)
         hits = emptyList()
         hint = null
+    }
+
+    fun focusPlace(place: Selection) {
+        selection = place
+        DesktopStore.savePlaces(places, place)
+    }
+
+    fun removePlace(place: Selection) {
+        places = places.filterNot { it.placeKey == place.placeKey }
+        if (selection.placeKey == place.placeKey) selection = places.lastOrNull() ?: Selection()
+        DesktopStore.savePlaces(places, selection)
     }
 
     fun search() {
@@ -125,7 +137,8 @@ class DesktopModel {
             return
         }
         selection = Selection(hit.group, hit.street, hit.house, hit.city)
-        DesktopStore.saveSelection(selection)
+        places = (places.filterNot { it.placeKey == selection.placeKey } + selection).takeLast(8)
+        DesktopStore.savePlaces(places, selection)
         hits = emptyList()
         query = ""
     }
@@ -162,53 +175,70 @@ class DesktopModel {
             note = parsed.note,
         )
         val previous = DesktopStore.loadSnapshot()
-        val group = DesktopStore.loadSelection().group
-        if (previous != null && group.isNotBlank() &&
-            ScheduleMath.scheduleChanged(previous, next, group, next.fetchedAt)
-        ) {
-            val key = "plan:" + ScheduleMath.planStamp(next, group)
-            if (DesktopStore.markNotified(key)) {
-                onNotify(
-                    "График изменился",
-                    details(group, "расписание на сайте обновили"),
-                )
+        if (previous != null) {
+            watched().forEach { place ->
+                if (!ScheduleMath.scheduleChanged(previous, next, place.group, next.fetchedAt)) return@forEach
+                val key = "plan:${place.placeKey}:" + ScheduleMath.planStamp(next, place.group)
+                if (DesktopStore.markNotified(key)) {
+                    onNotify("График изменился", details(place, "расписание на сайте обновили"))
+                }
             }
         }
         DesktopStore.saveSnapshot(next)
         return next
     }
 
-    private fun checkAlerts() {
-        val current = picture ?: return
-        val group = selection.group
-        if (group.isBlank()) return
-        val silent = quiet && ScheduleMath.isQuietHour(now)
-        val due = current.dueWarnOffAt
-        if (!silent && warn && due != null && DesktopStore.markNotified("warn:$due")) {
-            val minutes = ((due - now) / 60_000L).toInt().coerceAtLeast(0)
-            val title = if (minutes <= 1) "Свет выключат с минуты на минуту" else "Свет выключат через $minutes мин"
-            onNotify(title, details(group, "по графику отключение в ${ScheduleMath.formatDayTime(due, now)}"))
-        }
-        val display = current.displayOn
-        val previous = DesktopStore.lastDisplayOn()
-        if (!silent && notifyOn && previous == false && display == true) {
-            val near = current.appearAts.firstOrNull { kotlin.math.abs(it - now) < 30 * 60 * 1000L }
-            val key = if (near != null) "appear:$near" else "appear-live:$group:${now / 600_000L}"
-            if (DesktopStore.markNotified(key)) {
-                onNotify("По графику свет включили", details(group, "по графику свет есть"))
-            }
-        }
-        if (display != null) DesktopStore.setLastDisplayOn(display)
+    fun watched(): List<Selection> {
+        if (places.isNotEmpty()) return places
+        return if (selection.group.isBlank()) emptyList() else listOf(selection)
     }
 
-    private fun details(group: String, tail: String): String {
-        val place = selection.placeLabel
+    fun tooltip(): String {
+        val items = watched()
+        if (items.isEmpty() || snapshot == null) return "Светло"
+        return items.joinToString(" · ") { place ->
+            val on = ScheduleMath.picture(snapshot!!, place, now).displayOn
+            val name = place.placeLabel ?: place.group
+            val state = when (on) {
+                true -> "свет"
+                false -> "нет"
+                null -> "?"
+            }
+            "$name $state"
+        }
+    }
+
+    private fun checkAlerts() {
+        val currentSnapshot = snapshot ?: return
+        val silent = quiet && ScheduleMath.isQuietHour(now)
+        watched().forEach { place ->
+            val current = ScheduleMath.picture(currentSnapshot, place, now)
+            val due = current.dueWarnOffAt
+            if (!silent && warn && due != null && DesktopStore.markNotified("warn:${place.placeKey}:$due")) {
+                val minutes = ((due - now) / 60_000L).toInt().coerceAtLeast(0)
+                val title = if (minutes <= 1) "Свет выключат с минуты на минуту" else "Свет выключат через $minutes мин"
+                onNotify(title, details(place, "по графику отключение в ${ScheduleMath.formatDayTime(due, now)}"))
+            }
+            val display = current.displayOn
+            val previous = DesktopStore.lastDisplayOn(place.placeKey)
+            if (!silent && notifyOn && previous == false && display == true) {
+                val near = current.appearAts.firstOrNull { kotlin.math.abs(it - now) < 30 * 60 * 1000L }
+                val key = if (near != null) "appear:${place.placeKey}:$near" else "appear-live:${place.placeKey}:${now / 600_000L}"
+                if (DesktopStore.markNotified(key)) {
+                    onNotify("По графику свет включили", details(place, "по графику свет есть"))
+                }
+            }
+            if (display != null) DesktopStore.setLastDisplayOn(place.placeKey, display)
+        }
+    }
+
+    private fun details(place: Selection, tail: String): String {
         return buildString {
             append("Группа ")
-            append(group)
-            if (!place.isNullOrBlank()) {
+            append(place.group)
+            place.placeLabel?.let {
                 append(" · ")
-                append(place)
+                append(it)
             }
             append(" · ")
             append(tail)

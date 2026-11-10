@@ -2,6 +2,7 @@ package ua.`in`.vyshgorod.svitlo.data
 
 import android.content.Context
 import org.json.JSONArray
+import org.json.JSONObject
 
 class SvitloStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -15,15 +16,34 @@ class SvitloStore(context: Context) {
         )
     }
 
-    fun saveSelection(selection: Selection) {
+    fun loadPlaces(): List<Selection> {
+        val raw = prefs.getString(KEY_PLACES, null)
+        if (raw != null) {
+            val array = runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
+            return (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                selectionFrom(item).takeIf { it.group.isNotBlank() }
+            }
+        }
+        val one = loadSelection()
+        return if (one.group.isBlank()) emptyList() else listOf(one)
+    }
+
+    fun savePlaces(places: List<Selection>, focus: Selection) {
+        val array = JSONArray()
+        places.filter { it.group.isNotBlank() }.forEach { array.put(selectionJson(it)) }
         prefs.edit()
-            .putString(KEY_GROUP, selection.group)
-            .putString(KEY_STREET, selection.street)
-            .putString(KEY_HOUSE, selection.house)
-            .putString(KEY_CITY, selection.city)
-            .remove(KEY_LAST_ON)
-            .remove(KEY_NOTIFIED)
+            .putString(KEY_PLACES, array.toString())
+            .putString(KEY_GROUP, focus.group)
+            .putString(KEY_STREET, focus.street)
+            .putString(KEY_HOUSE, focus.house)
+            .putString(KEY_CITY, focus.city)
             .commit()
+    }
+
+    fun saveSelection(selection: Selection) {
+        val places = loadPlaces().filterNot { it.placeKey == selection.placeKey } + selection
+        savePlaces(places.filter { it.group.isNotBlank() }.takeLast(8), selection)
     }
 
     fun loadSnapshot(): Snapshot? = SnapshotJson.fromJson(prefs.getString(KEY_SNAPSHOT, null))
@@ -60,15 +80,23 @@ class SvitloStore(context: Context) {
         prefs.edit().putString(KEY_THEME, mode.stored).commit()
     }
 
-    /** null when this group has no baseline yet, so the first load does not look like a switch-on. */
-    fun lastDisplayOn(): Boolean? {
-        return if (prefs.contains(KEY_LAST_ON)) prefs.getBoolean(KEY_LAST_ON, false) else null
+    /** null when this address has no baseline yet, so the first load does not look like a switch-on. */
+    fun lastDisplayOn(placeKey: String): Boolean? {
+        val map = lastMap()
+        if (map != null) {
+            if (!map.has(placeKey) || map.isNull(placeKey)) return null
+            return map.optBoolean(placeKey)
+        }
+        if (!prefs.contains(KEY_LAST_ON)) return null
+        val only = loadPlaces().singleOrNull() ?: loadSelection().takeIf { it.group.isNotBlank() }
+        if (only?.placeKey != placeKey) return null
+        return prefs.getBoolean(KEY_LAST_ON, false)
     }
 
-    fun setLastDisplayOn(on: Boolean?) {
-        val editor = prefs.edit()
-        if (on == null) editor.remove(KEY_LAST_ON) else editor.putBoolean(KEY_LAST_ON, on)
-        editor.commit()
+    fun setLastDisplayOn(placeKey: String, on: Boolean?) {
+        val map = lastMap() ?: JSONObject()
+        if (on == null) map.remove(placeKey) else map.put(placeKey, on)
+        prefs.edit().putString(KEY_LAST_MAP, map.toString()).remove(KEY_LAST_ON).commit()
     }
 
     fun markNotified(key: String): Boolean {
@@ -89,13 +117,37 @@ class SvitloStore(context: Context) {
         private const val KEY_STREET = "street"
         private const val KEY_HOUSE = "house"
         private const val KEY_CITY = "city"
+        private const val KEY_PLACES = "places"
         private const val KEY_SNAPSHOT = "snapshot"
         private const val KEY_WARN = "warn"
         private const val KEY_ON = "notify_on"
         private const val KEY_QUIET = "quiet_night"
         private const val KEY_THEME = "theme"
         private const val KEY_LAST_ON = "last_on"
+        private const val KEY_LAST_MAP = "last_ons"
         private const val KEY_NOTIFIED = "notified"
+    }
+
+    private fun lastMap(): JSONObject? {
+        val raw = prefs.getString(KEY_LAST_MAP, null) ?: return null
+        return runCatching { JSONObject(raw) }.getOrNull()
+    }
+
+    private fun selectionJson(selection: Selection): JSONObject {
+        return JSONObject()
+            .put("group", selection.group)
+            .put("street", selection.street ?: "")
+            .put("house", selection.house ?: "")
+            .put("city", selection.city ?: "")
+    }
+
+    private fun selectionFrom(json: JSONObject): Selection {
+        return Selection(
+            group = json.optString("group"),
+            street = json.optString("street").ifBlank { null },
+            house = json.optString("house").ifBlank { null },
+            city = json.optString("city").ifBlank { null },
+        )
     }
 }
 

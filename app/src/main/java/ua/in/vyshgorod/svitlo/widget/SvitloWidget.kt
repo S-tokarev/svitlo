@@ -144,49 +144,21 @@ class SvitloWidget : AppWidgetProvider() {
             canvas.restore()
             paint.color = labelColor
             paint.textAlign = Paint.Align.LEFT
-            paint.textSize = 30f
+            paint.textSize = 22f
             paint.isFakeBoldText = true
-            val labels = bands(outages).mapNotNull { (start, _, _) ->
+            val labels = listOf("00" to 0) + bands(outages).mapNotNull { (start, _, _) ->
                 if (start <= 0 || start >= 1440) null
                 else {
                     val text = if (start % 60 == 0) "%02d".format(start / 60) else "%02d:%02d".format(start / 60, start % 60)
                     text to start
                 }
-            }
+            } + ("24" to 1440)
             val widths = labels.map { paint.measureText(it.first) }
-            val lefts = spreadHourLabels(
-                labels.map { it.second },
-                widths,
-                width.toFloat(),
-                8f,
-            )
+            val lefts = ScheduleMath.placeHourLabels(labels.map { it.second }, widths, width.toFloat(), 6f)
             labels.forEachIndexed { index, (text, _) ->
-                val left = lefts[index]
-                if (left < 0f || left + widths[index] > width + 1f) return@forEachIndexed
-                canvas.drawText(text, left, height - 8f, paint)
+                canvas.drawText(text, lefts[index], height - 8f, paint)
             }
             return bitmap
-        }
-
-        private fun spreadHourLabels(minutes: List<Int>, widths: List<Float>, track: Float, gap: Float): FloatArray {
-            if (minutes.isEmpty()) return FloatArray(0)
-            val lefts = FloatArray(minutes.size) { index ->
-                val ideal = track * minutes[index] / 1440f - widths[index] / 2f
-                ideal.coerceIn(0f, (track - widths[index]).coerceAtLeast(0f))
-            }
-            for (index in 1 until lefts.size) {
-                val minLeft = lefts[index - 1] + widths[index - 1] + gap
-                if (lefts[index] < minLeft) lefts[index] = minLeft
-            }
-            val overflow = lefts.last() + widths.last() - track
-            if (overflow > 0f) {
-                for (index in lefts.indices) lefts[index] -= overflow
-            }
-            if (lefts[0] < 0f) {
-                val shift = -lefts[0]
-                for (index in lefts.indices) lefts[index] += shift
-            }
-            return lefts
         }
 
         private fun bands(outages: List<Outage>): List<Triple<Int, Int, Boolean>> {

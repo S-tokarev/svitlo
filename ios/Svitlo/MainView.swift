@@ -122,10 +122,33 @@ struct MainView: View {
 
     private var address: some View {
         card {
-            Text("Адрес").font(.headline).foregroundStyle(palette.ink)
-            Text("По всей Киевской области. Адрес выбирает группу.")
+            Text("Адреса").font(.headline).foregroundStyle(palette.ink)
+            Text("Можно сохранить несколько. Адрес выбирает группу.")
                 .font(.caption)
                 .foregroundStyle(palette.muted)
+            ForEach(model.places, id: \.placeKey) { place in
+                let on = model.snapshot.flatMap { ScheduleMath.picture(snapshot: $0, selection: place, now: nowMs).displayOn }
+                let selected = place.placeKey == model.selection.placeKey
+                HStack {
+                    Button {
+                        model.focusPlace(place)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(place.placeLabel ?? "Группа \(place.group)")
+                                .foregroundStyle(palette.ink)
+                            Text("группа \(place.group) · \(on == true ? "свет есть" : on == false ? "света нет" : "нет данных")")
+                                .font(.caption)
+                                .foregroundStyle(on == true ? palette.powerOnText : on == false ? palette.powerOffText : palette.muted)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    Button("Убрать") { model.removePlace(place) }
+                        .font(.caption)
+                        .foregroundStyle(palette.muted)
+                }
+                .padding(8)
+                .background(selected ? palette.card2 : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+            }
             TextField("Улица и дом, например Буча Шевченка 11", text: $model.query)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -331,27 +354,10 @@ struct DayTrack: View {
         var items: [(minute: Int, text: String, powerOn: Bool?)] = [(0, "00", nil)]
         items += switches.map { ($0.minute, shortHour($0.minute), Optional($0.powerOn)) }
         items.append((1440, "24", nil))
-        let widths = items.map { CGFloat($0.text.count) * 8 + 2 }
-        let gap: CGFloat = 4
-        var lefts = items.enumerated().map { index, item in
-            let ideal = width * CGFloat(item.minute) / 1440 - widths[index] / 2
-            return min(max(0, ideal), max(0, width - widths[index]))
-        }
-        for index in 1..<lefts.count {
-            let minLeft = lefts[index - 1] + widths[index - 1] + gap
-            if lefts[index] < minLeft { lefts[index] = minLeft }
-        }
-        let overflow = lefts[lefts.count - 1] + widths[widths.count - 1] - width
-        if overflow > 0 {
-            for index in lefts.indices { lefts[index] -= overflow }
-        }
-        if lefts[0] < 0 {
-            let shift = -lefts[0]
-            for index in lefts.indices { lefts[index] += shift }
-        }
-        return zip(items, lefts).compactMap { item, left in
-            guard left >= -1, left + (CGFloat(item.text.count) * 8) <= width + 1 else { return nil }
-            return (item.minute, item.text, item.powerOn, left)
+        let widths = items.map { CGFloat($0.text.count) * 7 + 2 }
+        let lefts = ScheduleMath.placeHourLabels(minutes: items.map(\.minute), widths: widths, track: width, gap: 3)
+        return zip(items, lefts).map { item, left in
+            (item.minute, item.text, item.powerOn, left)
         }
     }
 

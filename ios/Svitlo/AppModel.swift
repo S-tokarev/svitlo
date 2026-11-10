@@ -36,7 +36,6 @@ enum ScheduleRefresh {
         let parsed = SvitloParser.parse(html: html)
         guard !parsed.days.isEmpty else { throw SvitloError.message("Сайт отдал страницу без графика") }
         let previous = AppStore.loadSnapshot()
-        let selection = AppStore.loadSelection()
         let snapshot = Snapshot(
             fetchedAt: ScheduleMath.millis(Date()),
             days: parsed.days,
@@ -45,12 +44,14 @@ enum ScheduleRefresh {
             tomorrowMissing: parsed.tomorrowMissing,
             note: parsed.note
         )
-        if let previous, !selection.group.isEmpty,
-           ScheduleMath.scheduleChanged(previous: previous, next: snapshot, group: selection.group, now: snapshot.fetchedAt) {
-            Notifier.scheduleChanged(selection: selection)
+        if let previous {
+            for place in AppStore.watched() where !place.group.isEmpty &&
+                ScheduleMath.scheduleChanged(previous: previous, next: snapshot, group: place.group, now: snapshot.fetchedAt) {
+                Notifier.scheduleChanged(selection: place)
+            }
         }
         AppStore.saveSnapshot(snapshot)
-        Notifier.reschedule(selection: selection, snapshot: snapshot)
+        Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
         WidgetCenter.shared.reloadAllTimelines()
         NotificationCenter.default.post(name: .svitloUpdated, object: nil)
     }
@@ -59,6 +60,7 @@ enum ScheduleRefresh {
 @MainActor
 final class AppModel: ObservableObject {
     @Published var selection = AppStore.loadSelection()
+    @Published var places = AppStore.loadPlaces()
     @Published var snapshot = AppStore.loadSnapshot()
     @Published var loading = false
     @Published var error: String?
@@ -115,7 +117,25 @@ final class AppModel: ObservableObject {
     func selectGroup(_ group: String) {
         selection = Selection(group: group)
         results = []
-        persistSelection()
+        AppStore.savePlaces(places, focus: selection)
+        Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    func focusPlace(_ place: Selection) {
+        selection = place
+        AppStore.savePlaces(places, focus: place)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    func removePlace(_ place: Selection) {
+        places.removeAll { $0.placeKey == place.placeKey }
+        if selection.placeKey == place.placeKey {
+            selection = places.last ?? Selection()
+        }
+        AppStore.savePlaces(places, focus: selection)
+        Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     func pick(_ hit: AddressHit) async {
@@ -138,7 +158,10 @@ final class AppModel: ObservableObject {
             return
         }
         selection = Selection(group: hit.group, street: hit.street, house: hit.house, city: hit.city)
-        query = hit.label
+        places.removeAll { $0.placeKey == selection.placeKey }
+        places.append(selection)
+        if places.count > 8 { places.removeFirst(places.count - 8) }
+        query = ""
         results = []
         persistSelection()
     }
@@ -164,19 +187,19 @@ final class AppModel: ObservableObject {
     func setWarn(_ value: Bool) {
         warnEnabled = value
         AppStore.setWarnEnabled(value)
-        Notifier.reschedule(selection: selection, snapshot: snapshot)
+        Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
     }
 
     func setNotify(_ value: Bool) {
         notifyOn = value
         AppStore.setNotifyWhenOn(value)
-        Notifier.reschedule(selection: selection, snapshot: snapshot)
+        Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
     }
 
     func setQuiet(_ value: Bool) {
         quietNight = value
         AppStore.setQuietNight(value)
-        Notifier.reschedule(selection: selection, snapshot: snapshot)
+        Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
     }
 
     func setTheme(_ mode: ThemeMode) {
@@ -187,11 +210,12 @@ final class AppModel: ObservableObject {
     func applyExternalUpdate() {
         snapshot = AppStore.loadSnapshot()
         selection = AppStore.loadSelection()
+        places = AppStore.loadPlaces()
     }
 
     private func persistSelection() {
-        AppStore.saveSelection(selection)
-        Notifier.reschedule(selection: selection, snapshot: snapshot)
+        AppStore.savePlaces(places, focus: selection)
+        Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
         WidgetCenter.shared.reloadAllTimelines()
     }
 }

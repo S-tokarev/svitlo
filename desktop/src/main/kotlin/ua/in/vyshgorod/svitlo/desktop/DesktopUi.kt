@@ -289,8 +289,42 @@ private fun GroupCard(
 @Composable
 private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Color, muted: Color) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(card).padding(18.dp)) {
-        Text("Адрес", color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-        Text("По всей Киевской области. Адрес выбирает группу.", color = muted, fontSize = 13.sp)
+        Text("Адреса", color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Text("Можно сохранить несколько. Адрес выбирает группу.", color = muted, fontSize = 13.sp)
+        if (model.places.isNotEmpty()) Spacer(Modifier.height(8.dp))
+        model.places.forEach { place ->
+            val on = model.snapshot?.let { ScheduleMath.picture(it, place, model.now).displayOn }
+            val selected = place.placeKey == model.selection.placeKey
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 6.dp).clip(RoundedCornerShape(12.dp))
+                    .background(if (selected) card2 else Color.Transparent)
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).clickable { model.focusPlace(place) }) {
+                    Text(place.placeLabel ?: "Группа ${place.group}", color = ink, fontWeight = FontWeight.Medium)
+                    Text(
+                        "группа ${place.group} · " + when (on) {
+                            true -> "свет есть"
+                            false -> "света нет"
+                            null -> "нет данных"
+                        },
+                        color = when (on) {
+                            true -> OnGreen
+                            false -> OffRed
+                            null -> muted
+                        },
+                        fontSize = 12.sp,
+                    )
+                }
+                Text(
+                    "Убрать",
+                    color = muted,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable { model.removePlace(place) }.padding(8.dp),
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
@@ -411,17 +445,17 @@ private fun DayTrack(
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val trackWidth = maxWidth
+        val density = LocalDensity.current
         val labelStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         val chips = listOf(Triple("00", 0, null as Boolean?)) +
             marks.map { Triple(hourLabel(it.first), it.first, it.second) } +
             Triple("24", 1440, null)
         val measured = chips.map { measurer.measure(it.first, style = labelStyle) }
-        val density = LocalDensity.current
         val lefts = with(density) {
             val trackPx = trackWidth.toPx()
-            val gapPx = 4.dp.toPx()
+            val gapPx = 3.dp.toPx()
             val widths = measured.map { it.size.width.toFloat() }
-            spreadHourLabels(chips.map { it.second }, widths, trackPx, gapPx).map { it.toDp() }
+            ScheduleMath.placeHourLabels(chips.map { it.second }, widths, trackPx, gapPx).map { it.toDp() }
         }
         val rowHeight = with(density) {
             measured.maxOf { it.size.height }.toDp().coerceAtLeast(16.dp)
@@ -476,7 +510,6 @@ private fun DayTrack(
             Box(Modifier.fillMaxWidth().height(rowHeight)) {
                 chips.forEachIndexed { index, chip ->
                     val left = lefts[index]
-                    if (left < 0.dp || left >= trackWidth) return@forEachIndexed
                     Text(
                         chip.first,
                         color = when (chip.third) {
@@ -532,39 +565,63 @@ private fun compactDuration(minutes: Int): String {
     }
 }
 
-private fun spreadHourLabels(minutes: List<Int>, widths: List<Float>, track: Float, gap: Float): FloatArray {
-    val packed = packHourLabels(minutes, widths, track, gap)
-    val fits = packed.isNotEmpty() && packed[0] >= -1f && packed.last() + widths.last() <= track + 1f
-    if (fits || minutes.size <= 2) return packed
-    val inner = packHourLabels(minutes.drop(1).dropLast(1), widths.drop(1).dropLast(1), track, gap)
-    val placed = FloatArray(minutes.size)
-    placed[0] = -widths[0] - gap
-    for (index in inner.indices) placed[index + 1] = inner[index]
-    placed[placed.lastIndex] = track + gap
-    return placed
-}
-
-private fun packHourLabels(minutes: List<Int>, widths: List<Float>, track: Float, gap: Float): FloatArray {
-    if (minutes.isEmpty()) return FloatArray(0)
-    val lefts = FloatArray(minutes.size) { index ->
-        val ideal = track * minutes[index] / 1440f - widths[index] / 2f
-        ideal.coerceIn(0f, (track - widths[index]).coerceAtLeast(0f))
+@Composable
+fun DesktopWidget(model: DesktopModel) {
+    val dark = when (model.theme) {
+        ThemeMode.System -> isSystemInDarkTheme()
+        ThemeMode.Light -> false
+        ThemeMode.Dark -> true
     }
-    for (index in 1 until lefts.size) {
-        val minLeft = lefts[index - 1] + widths[index - 1] + gap
-        if (lefts[index] < minLeft) lefts[index] = minLeft
+    val paper = if (dark) PaperDark else Paper
+    val ink = if (dark) InkDark else Ink
+    val muted = if (dark) MutedDark else Muted
+    val card = if (dark) CardDark else Card
+    val onText = if (dark) OnGreenDark else OnGreen
+    val offText = if (dark) OffRedDark else OffRed
+    val items = model.watched()
+    Column(
+        Modifier.fillMaxSize().background(paper).verticalScroll(rememberScrollState()).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text("Светло", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        if (items.isEmpty()) {
+            Text("Добавьте адрес в окне программы.", color = muted, fontSize = 13.sp)
+        }
+        items.forEach { place ->
+            val picture = model.snapshot?.let { ScheduleMath.picture(it, place, model.now) }
+            val on = picture?.displayOn
+            val color = when (on) {
+                true -> onText
+                false -> offText
+                null -> ink
+            }
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(card).padding(12.dp)) {
+                Text(place.placeLabel ?: "Группа ${place.group}", color = muted, fontSize = 12.sp)
+                Text(
+                    when (on) {
+                        true -> "Свет есть"
+                        false -> "Света нет"
+                        null -> "Нет данных"
+                    },
+                    color = color,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                val hint = nextHint(picture, model.now)
+                Text(hint.first, color = color, fontSize = 13.sp)
+                hint.second?.let { Text(it, color = color, fontWeight = FontWeight.Bold) }
+                if (picture != null && picture.outagesToday.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    DayTrack(
+                        slices = daySlices(picture.outagesToday),
+                        nowMin = ScheduleMath.minuteOfDay(model.now),
+                        onText = onText,
+                        offText = offText,
+                        muted = muted,
+                        nowColor = ink,
+                    )
+                }
+            }
+        }
     }
-    val overflow = lefts.last() + widths.last() - track
-    if (overflow > 0f) {
-        for (index in lefts.indices) lefts[index] -= overflow
-    }
-    if (lefts[0] < 0f) {
-        val shift = -lefts[0]
-        for (index in lefts.indices) lefts[index] += shift
-    }
-    for (index in 1 until lefts.size) {
-        val minLeft = lefts[index - 1] + widths[index - 1] + gap
-        if (lefts[index] < minLeft) lefts[index] = minLeft
-    }
-    return lefts
 }

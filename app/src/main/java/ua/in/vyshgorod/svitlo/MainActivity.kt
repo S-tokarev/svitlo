@@ -63,6 +63,8 @@ class MainActivity : ComponentActivity() {
                     onQuery = { screen = screen.copy(query = it, searchError = null) },
                     onSearch = ::search,
                     onPickAddress = ::pickAddress,
+                    onFocusPlace = ::focusPlace,
+                    onRemovePlace = ::removePlace,
                     onWarn = ::setWarn,
                     onNotifyOn = ::setNotifyOn,
                     onQuietNight = ::setQuietNight,
@@ -92,6 +94,7 @@ class MainActivity : ComponentActivity() {
         val store = SvitloStore(this)
         screen = screen.copy(
             selection = store.loadSelection(),
+            places = store.loadPlaces(),
             snapshot = store.loadSnapshot(),
             warnEnabled = store.warnEnabled(),
             notifyOn = store.notifyWhenOn(),
@@ -122,9 +125,26 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun selectGroup(group: String) {
+        val store = SvitloStore(this)
         val selection = Selection(group = group)
-        SvitloStore(this).saveSelection(selection)
-        screen = screen.copy(selection = selection, results = emptyList())
+        store.savePlaces(store.loadPlaces(), selection)
+        screen = screen.copy(selection = selection, places = store.loadPlaces(), results = emptyList())
+        SvitloRepository.rescheduleFromCache(this)
+    }
+
+    private fun focusPlace(place: Selection) {
+        val store = SvitloStore(this)
+        store.savePlaces(store.loadPlaces(), place)
+        screen = screen.copy(selection = place, places = store.loadPlaces(), results = emptyList())
+        SvitloWidget.updateAll(this)
+    }
+
+    private fun removePlace(place: Selection) {
+        val store = SvitloStore(this)
+        val places = store.loadPlaces().filterNot { it.placeKey == place.placeKey }
+        val focus = if (screen.selection.placeKey == place.placeKey) places.lastOrNull() ?: Selection() else screen.selection
+        store.savePlaces(places, focus)
+        screen = screen.copy(selection = focus, places = places, results = emptyList())
         SvitloRepository.rescheduleFromCache(this)
     }
 
@@ -144,8 +164,9 @@ class MainActivity : ComponentActivity() {
             return
         }
         val selection = Selection(group = hit.group, street = hit.street, house = hit.house, city = hit.city)
-        SvitloStore(this).saveSelection(selection)
-        screen = screen.copy(selection = selection, results = emptyList(), query = hit.label)
+        val store = SvitloStore(this)
+        store.saveSelection(selection)
+        screen = screen.copy(selection = selection, places = store.loadPlaces(), results = emptyList(), query = "")
         SvitloRepository.rescheduleFromCache(this)
     }
 

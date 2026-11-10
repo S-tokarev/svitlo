@@ -54,6 +54,9 @@ data class Selection(
             val place = listOfNotNull(city?.takeIf { it.isNotBlank() }, street, house)
             return place.joinToString(", ")
         }
+
+    val placeKey: String
+        get() = listOf(group, city.orEmpty(), street.orEmpty(), house.orEmpty()).joinToString("\u001f")
 }
 
 data class Snapshot(

@@ -18,6 +18,7 @@ enum AppGroup {
 
 enum AppStore {
     private static let selectionKey = "selection"
+    private static let placesKey = "places"
     private static let snapshotKey = "snapshot"
     private static let warnKey = "warn"
     private static let notifyKey = "notify_on"
@@ -29,7 +30,29 @@ enum AppStore {
     }
 
     static func saveSelection(_ selection: Selection) {
-        encode(selection, key: selectionKey)
+        var places = loadPlaces().filter { $0.placeKey != selection.placeKey }
+        if !selection.group.isEmpty { places.append(selection) }
+        savePlaces(Array(places.suffix(8)), focus: selection)
+    }
+
+    static func loadPlaces() -> [Selection] {
+        if AppGroup.defaults.data(forKey: placesKey) != nil {
+            return (decode([Selection].self, key: placesKey) ?? []).filter { !$0.group.isEmpty }
+        }
+        let one = loadSelection()
+        return one.group.isEmpty ? [] : [one]
+    }
+
+    static func savePlaces(_ places: [Selection], focus: Selection) {
+        encode(places.filter { !$0.group.isEmpty }, key: placesKey)
+        encode(focus, key: selectionKey)
+    }
+
+    static func watched() -> [Selection] {
+        let places = loadPlaces()
+        if !places.isEmpty { return places }
+        let focus = loadSelection()
+        return focus.group.isEmpty ? [] : [focus]
     }
 
     static func loadSnapshot() -> Snapshot? {

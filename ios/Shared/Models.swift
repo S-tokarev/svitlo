@@ -55,6 +55,10 @@ struct Selection: Codable, Equatable {
             return value
         }.joined(separator: ", ")
     }
+
+    var placeKey: String {
+        [group, city ?? "", street ?? "", house ?? ""].joined(separator: "\u{1f}")
+    }
 }
 
 struct Snapshot: Codable, Equatable {

@@ -117,6 +117,21 @@ class SvitloParserTest {
     }
 
     @Test
+    fun hourLabelsKeepEverySwitchIncludingTheTightEnd() {
+        val minutes = listOf(0, 180, 360, 810, 990, 1410, 1440)
+        val widths = listOf(18f, 18f, 18f, 42f, 42f, 48f, 18f)
+        val lefts = ScheduleMath.placeHourLabels(minutes, widths, track = 340f, gap = 4f)
+        assertEquals(minutes.size, lefts.size)
+        lefts.forEachIndexed { index, left ->
+            assertTrue(left >= -0.5f)
+            assertTrue(left + widths[index] <= 340.5f)
+            if (index > 0) assertTrue(left + 0.5f >= lefts[index - 1] + widths[index - 1])
+        }
+        assertTrue(lefts[4] > lefts[3] + widths[3])
+        assertTrue(lefts[4] < lefts[5])
+    }
+
+    @Test
     fun quietHoursCoverNightButNotEvening() {
         val zone = ScheduleMath.zone
         fun at(hour: Int, minute: Int): Long {

@@ -205,6 +205,43 @@ object ScheduleMath {
     }
 
     /**
+     * Puts every hour label inside the track without dropping one.
+     * Labels stay near their minute, and a tight pair such as 23:30 and 24 sits side by side.
+     */
+    fun placeHourLabels(minutes: List<Int>, widths: List<Float>, track: Float, gap: Float): FloatArray {
+        val count = minutes.size
+        if (count == 0) return FloatArray(0)
+        val safeTrack = track.coerceAtLeast(1f)
+        val lefts = FloatArray(count)
+        lefts[0] = (safeTrack * minutes[0] / 1440f - widths[0] / 2f)
+            .coerceIn(0f, (safeTrack - widths[0]).coerceAtLeast(0f))
+        for (index in 1 until count) {
+            val ideal = safeTrack * minutes[index] / 1440f - widths[index] / 2f
+            val minLeft = lefts[index - 1] + widths[index - 1] + gap
+            lefts[index] = maxOf(ideal, minLeft)
+        }
+        val overflow = lefts[count - 1] + widths[count - 1] - safeTrack
+        if (overflow > 0f) {
+            lefts[count - 1] = (safeTrack - widths[count - 1]).coerceAtLeast(0f)
+            for (index in count - 2 downTo 0) {
+                val maxLeft = lefts[index + 1] - gap - widths[index]
+                if (lefts[index] > maxLeft) lefts[index] = maxLeft
+            }
+        }
+        if (lefts[0] < 0f) {
+            val total = widths.sum()
+            val free = (safeTrack - total).coerceAtLeast(0f)
+            val step = if (count > 1) free / (count - 1) else 0f
+            var cursor = 0f
+            for (index in 0 until count) {
+                lefts[index] = cursor
+                cursor += widths[index] + step
+            }
+        }
+        return lefts
+    }
+
+    /**
      * True when a future calendar day in [next] has different outages for [group]
      * than [previous]. A day that is already over does not count as a change.
      */

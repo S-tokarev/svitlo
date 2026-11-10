@@ -24,32 +24,39 @@ enum Notifier {
     }
 
     static func reschedule(selection: Selection, snapshot: Snapshot?) {
+        reschedule(places: AppStore.watched(), snapshot: snapshot)
+        _ = selection
+    }
+
+    static func reschedule(places: [Selection], snapshot: Snapshot?) {
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()
-        guard let snapshot, !selection.group.isEmpty else { return }
+        guard let snapshot else { return }
         let now = ScheduleMath.millis(Date())
-        let picture = ScheduleMath.picture(snapshot: snapshot, selection: selection, now: now)
         let quiet = AppStore.quietNight()
-        let place = selection.placeLabel
-        if AppStore.warnEnabled() {
-            for fireAt in picture.warnAts.prefix(16) {
-                guard !quiet || !ScheduleMath.isQuietHour(fireAt) else { continue }
-                let offAt = fireAt + ScheduleMath.warnBeforeMs
-                let content = UNMutableNotificationContent()
-                content.title = "Свет выключат через 10 мин"
-                content.body = details(selection.group, place, "по графику отключение в \(ScheduleMath.formatDayTime(offAt, now: fireAt))")
-                content.sound = .default
-                schedule(center, id: "warn-\(offAt)", at: fireAt, content: content)
+        for selection in places where !selection.group.isEmpty {
+            let picture = ScheduleMath.picture(snapshot: snapshot, selection: selection, now: now)
+            let place = selection.placeLabel
+            if AppStore.warnEnabled() {
+                for fireAt in picture.warnAts.prefix(8) {
+                    guard !quiet || !ScheduleMath.isQuietHour(fireAt) else { continue }
+                    let offAt = fireAt + ScheduleMath.warnBeforeMs
+                    let content = UNMutableNotificationContent()
+                    content.title = "Свет выключат через 10 мин"
+                    content.body = details(selection.group, place, "по графику отключение в \(ScheduleMath.formatDayTime(offAt, now: fireAt))")
+                    content.sound = .default
+                    schedule(center, id: "warn-\(selection.placeKey)-\(offAt)", at: fireAt, content: content)
+                }
             }
-        }
-        if AppStore.notifyWhenOn() {
-            for onAt in picture.appearAts.prefix(16) {
-                guard !quiet || !ScheduleMath.isQuietHour(onAt) else { continue }
-                let content = UNMutableNotificationContent()
-                content.title = "По графику свет включили"
-                content.body = details(selection.group, place, "по графику свет есть")
-                content.sound = .default
-                schedule(center, id: "on-\(onAt)", at: onAt, content: content)
+            if AppStore.notifyWhenOn() {
+                for onAt in picture.appearAts.prefix(8) {
+                    guard !quiet || !ScheduleMath.isQuietHour(onAt) else { continue }
+                    let content = UNMutableNotificationContent()
+                    content.title = "По графику свет включили"
+                    content.body = details(selection.group, place, "по графику свет есть")
+                    content.sound = .default
+                    schedule(center, id: "on-\(selection.placeKey)-\(onAt)", at: onAt, content: content)
+                }
             }
         }
     }
