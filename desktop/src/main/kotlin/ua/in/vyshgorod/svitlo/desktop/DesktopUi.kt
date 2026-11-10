@@ -1,33 +1,46 @@
 package ua.`in`.vyshgorod.svitlo.desktop
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ua.`in`.vyshgorod.svitlo.data.Outage
@@ -43,6 +56,8 @@ private val OnGreen = Color(0xFF1E8F4A)
 private val OffRed = Color(0xFFA33E2C)
 private val BarOn = Color(0xFF7DDE96)
 private val BarOff = Color(0xFFD1543E)
+private val OnBarOn = Color(0xFF0E3B22)
+private val OnBarOff = Color(0xFF3C120C)
 private val Accent = Color(0xFF1C6E8A)
 
 private val PaperDark = Color(0xFF141311)
@@ -70,7 +85,13 @@ fun DesktopApp(model: DesktopModel) {
     val picture = model.picture
     val now = model.now
     val hint = nextHint(picture, now)
+    val scheme = if (dark) {
+        darkColorScheme(primary = Accent, onPrimary = Color.White, background = paper, surface = card)
+    } else {
+        lightColorScheme(primary = Accent, onPrimary = Color.White, background = paper, surface = card)
+    }
 
+    MaterialTheme(colorScheme = scheme) {
     Column(
         Modifier.fillMaxSize().background(paper).verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -82,7 +103,7 @@ fun DesktopApp(model: DesktopModel) {
             }
         }
         Text(
-            "Окно можно закрыть: программа останется в трее и проверит график через 15 минут.",
+            "Окно можно закрыть: программа останется в трее и проверит график через 15 минут. Щелчок по значку снова откроет окно.",
             color = muted,
             fontSize = 13.sp,
         )
@@ -109,6 +130,7 @@ fun DesktopApp(model: DesktopModel) {
         GroupCard(model, card, card2, ink, muted, onText, offText)
         SearchCard(model, card, card2, ink, muted)
         SettingsCard(model, card, ink)
+    }
     }
 }
 
@@ -175,24 +197,13 @@ private fun DayCard(
             Total("Света нет", offMinutes, offText, Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth().height(36.dp).clip(RoundedCornerShape(10.dp))) {
-            slices.forEach { slice ->
-                Box(
-                    Modifier.weight(slice.length.coerceAtLeast(1).toFloat()).fillMaxHeight()
-                        .background(if (slice.powerOn) BarOn else BarOff),
-                )
-            }
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            (listOf("00") + slices.mapNotNull { slice ->
-                if (slice.startMin <= 0 || slice.startMin >= 1440) null
-                else hourLabel(slice.startMin)
-            } + "24").joinToString("    "),
-            color = muted,
-            fontSize = 12.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Clip,
+        DayTrack(
+            slices = slices,
+            nowMin = nowMin,
+            onText = onText,
+            offText = offText,
+            muted = muted,
+            nowColor = ink,
         )
         Spacer(Modifier.height(8.dp))
         slices.forEach { slice ->
@@ -247,21 +258,28 @@ private fun GroupCard(
                     val state = model.snapshot?.let {
                         ScheduleMath.picture(it, ua.`in`.vyshgorod.svitlo.data.Selection(group), model.now).displayOn
                     }
+                    val dot = when (state) {
+                        true -> BarOn
+                        false -> BarOff
+                        null -> muted
+                    }
                     val color = when {
                         selected && state == true -> onText
                         selected && state == false -> offText
-                        else -> muted
+                        else -> ink
                     }
-                    Text(
-                        group,
-                        color = if (selected) color else muted,
-                        fontWeight = FontWeight.SemiBold,
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
                             .background(if (selected) card2 else Color.Transparent)
                             .clickable { model.selectGroup(group) }
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                    )
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
+                        Spacer(Modifier.width(6.dp))
+                        Text(group, color = if (selected) color else muted, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
@@ -377,8 +395,176 @@ private fun daySlices(outages: List<Outage>): List<Slice> {
     return slices
 }
 
+@Composable
+private fun DayTrack(
+    slices: List<Slice>,
+    nowMin: Int?,
+    onText: Color,
+    offText: Color,
+    muted: Color,
+    nowColor: Color,
+) {
+    val measurer = rememberTextMeasurer()
+    val marks = slices.mapNotNull { slice ->
+        if (slice.startMin <= 0 || slice.startMin >= 1440) null
+        else slice.startMin to slice.powerOn
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val trackWidth = maxWidth
+        val labelStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        val chips = listOf(Triple("00", 0, null as Boolean?)) +
+            marks.map { Triple(hourLabel(it.first), it.first, it.second) } +
+            Triple("24", 1440, null)
+        val measured = chips.map { measurer.measure(it.first, style = labelStyle) }
+        val density = LocalDensity.current
+        val lefts = with(density) {
+            val trackPx = trackWidth.toPx()
+            val gapPx = 4.dp.toPx()
+            val widths = measured.map { it.size.width.toFloat() }
+            spreadHourLabels(chips.map { it.second }, widths, trackPx, gapPx).map { it.toDp() }
+        }
+        val rowHeight = with(density) {
+            measured.maxOf { it.size.height }.toDp().coerceAtLeast(16.dp)
+        }
+        Column {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            ) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val durationStyle = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    slices.forEach { slice ->
+                        val start = size.width * slice.startMin / 1440f
+                        val end = size.width * slice.endMin / 1440f
+                        val fill = if (slice.powerOn) BarOn else BarOff
+                        val ink = if (slice.powerOn) OnBarOn else OnBarOff
+                        drawRect(fill, topLeft = Offset(start, 0f), size = Size(end - start, size.height))
+                        val full = ScheduleMath.formatDuration(slice.length * 60_000L)
+                        val short = compactDuration(slice.length)
+                        val pad = 8.dp.toPx()
+                        val width = end - start
+                        val fullLayout = measurer.measure(full, style = durationStyle.copy(color = ink))
+                        val layout = if (fullLayout.size.width + pad < width) {
+                            fullLayout
+                        } else {
+                            measurer.measure(short, style = durationStyle.copy(color = ink))
+                        }
+                        if (layout.size.width + pad < width && layout.size.height < size.height) {
+                            drawText(
+                                layout,
+                                topLeft = Offset(
+                                    start + (width - layout.size.width) / 2f,
+                                    (size.height - layout.size.height) / 2f,
+                                ),
+                            )
+                        }
+                    }
+                    marks.forEach { mark ->
+                        val x = size.width * mark.first / 1440f
+                        drawLine(
+                            Color.Black.copy(alpha = 0.45f),
+                            Offset(x, 0f),
+                            Offset(x, size.height),
+                            strokeWidth = 2.dp.toPx(),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            Box(Modifier.fillMaxWidth().height(rowHeight)) {
+                chips.forEachIndexed { index, chip ->
+                    val left = lefts[index]
+                    if (left < 0.dp || left >= trackWidth) return@forEachIndexed
+                    Text(
+                        chip.first,
+                        color = when (chip.third) {
+                            true -> onText
+                            false -> offText
+                            null -> muted
+                        },
+                        style = labelStyle,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.offset(x = left),
+                    )
+                }
+            }
+        }
+        if (nowMin != null) {
+            val x = trackWidth * nowMin / 1440f
+            Box(
+                Modifier
+                    .offset(x = (x - 1.dp).coerceIn(0.dp, (trackWidth - 2.dp).coerceAtLeast(0.dp)))
+                    .width(2.dp)
+                    .height(44.dp)
+                    .background(nowColor),
+            )
+            Box(
+                Modifier
+                    .offset(
+                        x = (x - 6.dp).coerceIn(0.dp, (trackWidth - 12.dp).coerceAtLeast(0.dp)),
+                        y = 16.dp,
+                    )
+                    .size(12.dp)
+                    .clip(CircleShape)
+                    .background(nowColor)
+                    .border(2.dp, Color.White.copy(alpha = 0.85f), CircleShape),
+            )
+        }
+    }
+}
+
 private fun hourLabel(minute: Int): String {
     val hour = minute / 60
     val rest = minute % 60
     return if (rest == 0) "%02d".format(hour) else "%02d:%02d".format(hour, rest)
+}
+
+private fun compactDuration(minutes: Int): String {
+    val hours = minutes / 60
+    val rest = minutes % 60
+    return when {
+        hours > 0 && rest > 0 -> "${hours}ч ${rest}м"
+        hours > 0 -> "${hours}ч"
+        else -> "${rest}м"
+    }
+}
+
+private fun spreadHourLabels(minutes: List<Int>, widths: List<Float>, track: Float, gap: Float): FloatArray {
+    val packed = packHourLabels(minutes, widths, track, gap)
+    val fits = packed.isNotEmpty() && packed[0] >= -1f && packed.last() + widths.last() <= track + 1f
+    if (fits || minutes.size <= 2) return packed
+    val inner = packHourLabels(minutes.drop(1).dropLast(1), widths.drop(1).dropLast(1), track, gap)
+    val placed = FloatArray(minutes.size)
+    placed[0] = -widths[0] - gap
+    for (index in inner.indices) placed[index + 1] = inner[index]
+    placed[placed.lastIndex] = track + gap
+    return placed
+}
+
+private fun packHourLabels(minutes: List<Int>, widths: List<Float>, track: Float, gap: Float): FloatArray {
+    if (minutes.isEmpty()) return FloatArray(0)
+    val lefts = FloatArray(minutes.size) { index ->
+        val ideal = track * minutes[index] / 1440f - widths[index] / 2f
+        ideal.coerceIn(0f, (track - widths[index]).coerceAtLeast(0f))
+    }
+    for (index in 1 until lefts.size) {
+        val minLeft = lefts[index - 1] + widths[index - 1] + gap
+        if (lefts[index] < minLeft) lefts[index] = minLeft
+    }
+    val overflow = lefts.last() + widths.last() - track
+    if (overflow > 0f) {
+        for (index in lefts.indices) lefts[index] -= overflow
+    }
+    if (lefts[0] < 0f) {
+        val shift = -lefts[0]
+        for (index in lefts.indices) lefts[index] += shift
+    }
+    for (index in 1 until lefts.size) {
+        val minLeft = lefts[index - 1] + widths[index - 1] + gap
+        if (lefts[index] < minLeft) lefts[index] = minLeft
+    }
+    return lefts
 }

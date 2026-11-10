@@ -18,9 +18,9 @@ enum class ThemeMode(val stored: String, val title: String) {
 }
 
 object DesktopStore {
-    private val root: File = File(System.getenv("APPDATA") ?: userData(), "Svitlo").apply { mkdirs() }
-    private val file = File(root, "state.json")
-    val cacheFile = File(root, "dtek-streets.json")
+    val directory: File = File(System.getenv("APPDATA") ?: userData(), "Svitlo").apply { mkdirs() }
+    private val file = File(directory, "state.json")
+    val cacheFile = File(directory, "dtek-streets.json")
 
     private fun userData(): String {
         val os = System.getProperty("os.name").lowercase()
