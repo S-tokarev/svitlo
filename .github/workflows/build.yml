@@ -70,8 +70,50 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build-for-testing
 
+      - name: Архив симулятора
+        run: |
+          cd ios/DerivedData/Build/Products/Debug-iphonesimulator
+          zip -r "$GITHUB_WORKSPACE/Svitlo-iphonesimulator.zip" Svitlo.app
+
       - uses: actions/upload-artifact@v4
         with:
           name: svitlo-ios-simulator
-          path: ios/DerivedData/Build/Products/Debug-iphonesimulator/Svitlo.app
+          path: Svitlo-iphonesimulator.zip
           if-no-files-found: error
+
+  release:
+    name: Release
+    needs: [android, ios]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Опубликовать Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apk="$(find dist -name 'app-debug.apk' -print -quit)"
+          ios="$(find dist -name 'Svitlo-iphonesimulator.zip' -print -quit)"
+          test -n "$apk" && test -n "$ios"
+          cp "$apk" svitlo-android.apk
+          cp "$ios" svitlo-iphonesimulator.zip
+          gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh release create latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Последняя сборка" \
+            --prerelease \
+            --notes "$(printf '%s\n' \
+              "Сборка коммита ${GITHUB_SHA}." \
+              "" \
+              "svitlo-android.apk — debug-сборка, её можно поставить на телефон." \
+              "svitlo-iphonesimulator.zip — приложение для симулятора, без подписи Apple. На iPhone не ставится." \
+              "" \
+              "GitHub Packages не используется: туда кладут пакеты Maven, npm и Docker, а не готовые приложения.")" \
+            svitlo-android.apk \
+            svitlo-iphonesimulator.zip
