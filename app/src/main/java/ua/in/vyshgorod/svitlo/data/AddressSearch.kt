@@ -14,7 +14,7 @@ import java.util.Locale
 /**
  * Street and house lookup for the whole Kyiv oblast, from the same directory
  * the DTEK Kyiv regional networks shutdown page uses. The schedule itself
- * still comes from the public alerts.energy page.
+ * comes from the public vyshgorod.in.ua/svitlo page.
  */
 object AddressSearch {
     private const val AJAX = "https://www.dtek-krem.com.ua/ua/ajax"

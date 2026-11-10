@@ -1,242 +1,226 @@
 package ua.`in`.vyshgorod.svitlo.data
 
-import org.json.JSONArray
-import org.json.JSONException
-import org.json.JSONObject
-import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
- * Reads the schedule embedded in the public alerts.energy page.
- * The page state contains the source-registry shutdowns payload for every queue.
- * Hour codes: 0 none, 1 the whole hour, 2 the first 30 minutes, 3 the second 30 minutes.
- * Code 9 and status EmergencyShutdowns are emergency data, not a stabilization plan.
+ * Reads https://vyshgorod.in.ua/svitlo.
+ * The light SVGs draw today's and tomorrow's outages as gray bars.
+ * Group chips carry the live countdown. House rows carry sensor status.
  */
 object SvitloParser {
-    private const val STATE_KEY = "api:/source-registry/areas/kyivska-oblast/shutdowns"
-    private const val INITIATOR = "kyivska_oblast_oblenergo"
     private val queueId = Regex("""^[1-6]\.[12]$""")
-    private val zone = ScheduleMath.zone
-    private val isoDate = DateTimeFormatter.ISO_LOCAL_DATE
+    private val textTag = Regex("""<text\b([^>]*)>(.*?)</text>""", RegexOption.DOT_MATCHES_ALL)
+    private val rectTag = Regex("""<rect\b([^>]*)/?>""")
+    private val attr = Regex("""([\w:-]+)="([^"]*)"""")
+    private val liveChip = Regex(
+        """<span class="group ([^"]*)" data-g="([^"]*)">\s*<b>[^<]*</b>\s*<small>([^<]*)</small>\s*<span class="mono[^"]*" data-sec="(\d+)"""",
+    )
+    private val houseBlock = Regex(
+        """<div class="house([^"]*)"\s+data-g="([^"]*)"\s+data-st="([^"]*)"\s+data-q="[^"]*">(.*?)</div>""",
+        RegexOption.DOT_MATCHES_ALL,
+    )
     private val dayDate = DateTimeFormatter.ofPattern("dd.MM.yyyy")
-    private val clock = DateTimeFormatter.ofPattern("HH:mm")
     private val labelFormat = DateTimeFormatter.ofPattern("d MMMM", Locale.forLanguageTag("ru"))
+    private val months = mapOf(
+        "січня" to 1, "лютого" to 2, "березня" to 3, "квітня" to 4, "травня" to 5, "червня" to 6,
+        "липня" to 7, "серпня" to 8, "вересня" to 9, "жовтня" to 10, "листопада" to 11, "грудня" to 12,
+    )
 
     fun parse(html: String): ParsedPage {
-        return try {
-            val rows = extractRows(html) ?: return emptyPage()
-            parseRows(rows)
-        } catch (_: JSONException) {
-            emptyPage()
+        val charts = lightSvgs(html).mapIndexedNotNull { index, svg ->
+            parseChart(svg, if (index == 0) "today" else "tomorrow")
         }
-    }
-
-    internal fun parseRows(rows: JSONArray): ParsedPage {
-        val todayGroups = linkedMapOf<String, List<Outage>>()
-        val todayUpdated = linkedMapOf<String, String>()
-        val tomorrowGroups = linkedMapOf<String, List<Outage>>()
-        val tomorrowUpdated = linkedMapOf<String, String>()
-        var todayDate = ""
-        var tomorrowDate = ""
-        var sawOperator = false
-        val messages = mutableListOf<String>()
-
-        for (index in 0 until rows.length()) {
-            val row = rows.optJSONObject(index) ?: continue
-            if (row.optString("initiator") != INITIATOR) continue
-            val queue = row.optString("queue")
-            if (!queueId.matches(queue)) continue
-            sawOperator = true
-            val stamp = formatStamp(row.optString("updated"))
-            val rowToday = row.optString("todayDate")
-            val rowTomorrow = row.optString("tomorrowDate")
-            if (todayDate.isEmpty()) todayDate = rowToday
-            if (tomorrowDate.isEmpty()) tomorrowDate = rowTomorrow
-            if (publish(row, "todayStatus", "today", "todayPossible", todayDate, "todayDate", todayGroups, queue)) {
-                if (stamp != null) todayUpdated[queue] = stamp
-            }
-            if (publish(row, "tomorrowStatus", "tomorrow", "tomorrowPossible", tomorrowDate, "tomorrowDate", tomorrowGroups, queue)) {
-                if (stamp != null) tomorrowUpdated[queue] = stamp
-            }
-            collectMessages(row.optJSONArray("todayAnnouncements"), messages)
-            collectMessages(row.optJSONArray("tomorrowAnnouncements"), messages)
-        }
-
-        if (!sawOperator) return emptyPage()
-        val today = daySchedule("today", todayDate, todayGroups, todayUpdated)
-        val tomorrow = if (tomorrowGroups.isEmpty()) null else daySchedule("tomorrow", tomorrowDate, tomorrowGroups, tomorrowUpdated)
+        val today = charts.firstOrNull { it.day == "today" }
+        if (today == null || today.groups.isEmpty()) return emptyPage()
+        val tomorrow = charts.firstOrNull { it.day == "tomorrow" }
         return ParsedPage(
             days = listOfNotNull(today, tomorrow),
-            live = emptyList(),
-            houses = emptyList(),
+            live = parseLive(html),
+            houses = parseHouses(html),
             tomorrowMissing = tomorrow == null,
-            note = dedupe(messages),
         )
     }
 
-    private fun publish(
-        row: JSONObject,
-        statusKey: String,
-        arrayKey: String,
-        possibleKey: String,
-        expectedDate: String,
-        dateKey: String,
-        groups: MutableMap<String, List<Outage>>,
-        queue: String,
-    ): Boolean {
-        val date = row.optString(dateKey)
-        if (expectedDate.isEmpty() || date != expectedDate) return false
-        val slots = when (row.optString(statusKey)) {
-            "ScheduleApplies" -> combine(readCodes(row, arrayKey, required = true), readCodes(row, possibleKey, required = false), zerosOnly = false)
-            "NoShutdowns" -> combine(readCodes(row, arrayKey, required = true), readCodes(row, possibleKey, required = false), zerosOnly = true)
-            else -> null
-        } ?: return false
-        groups[queue] = toOutages(slots)
-        return true
-    }
-
-    private fun combine(planned: Hours, possible: Hours, zerosOnly: Boolean): BooleanArray? {
-        val plan = planned as? Hours.Ok ?: return null
-        if (zerosOnly && plan.slots.any { it }) return null
-        return when (possible) {
-            Hours.Absent -> plan.slots
-            is Hours.Ok -> BooleanArray(plan.slots.size) { plan.slots[it] || possible.slots[it] }
-            Hours.Emergency, Hours.Unusable -> null
-        }
-    }
-
-    private fun readCodes(row: JSONObject, key: String, required: Boolean): Hours {
-        if (!row.has(key)) return if (required) Hours.Unusable else Hours.Absent
-        if (row.isNull(key)) return Hours.Unusable
-        val value = row.get(key)
-        if (value !is JSONArray) return Hours.Unusable
-        if (value.length() == 0) return if (required) Hours.Unusable else Hours.Absent
-        if (value.length() != 24) return Hours.Unusable
-        val slots = BooleanArray(48)
-        var emergency = false
-        for (hour in 0 until 24) {
-            val code = codeAt(value, hour) ?: return Hours.Unusable
-            when (code) {
-                0 -> Unit
-                1 -> {
-                    slots[hour * 2] = true
-                    slots[hour * 2 + 1] = true
-                }
-                2 -> slots[hour * 2] = true
-                3 -> slots[hour * 2 + 1] = true
-                9 -> emergency = true
-                else -> return Hours.Unusable
-            }
-        }
-        if (emergency) return Hours.Emergency
-        return Hours.Ok(slots)
-    }
-
-    private fun codeAt(array: JSONArray, index: Int): Int? {
-        val raw = array.opt(index)
-        val number = raw as? Number ?: return null
-        val code = number.toInt()
-        if (number.toDouble() != code.toDouble()) return null
-        return code
-    }
-
-    internal fun toOutages(slots: BooleanArray): List<Outage> {
-        val result = mutableListOf<Outage>()
-        var start = -1
-        for (index in 0..slots.size) {
-            val on = index < slots.size && slots[index]
-            if (on && start < 0) start = index
-            if (!on && start >= 0) {
-                result.add(Outage(start * 30, index * 30))
-                start = -1
-            }
+    private fun lightSvgs(html: String): List<String> {
+        val marker = "<div class=\"sg-svg sg-svg-light\">"
+        val result = mutableListOf<String>()
+        var from = 0
+        while (result.size < 2) {
+            val start = html.indexOf(marker, from)
+            if (start < 0) break
+            val svgStart = html.indexOf("<svg", start)
+            val svgEnd = html.indexOf("</svg></div>", svgStart)
+            if (svgStart < 0 || svgEnd < 0) break
+            result += html.substring(svgStart, svgEnd + "</svg>".length)
+            from = svgEnd + "</svg></div>".length
         }
         return result
     }
 
-    private fun collectMessages(array: JSONArray?, into: MutableList<String>) {
-        if (array == null) return
-        val now = Instant.now()
-        for (index in 0 until array.length()) {
-            val item = array.optJSONObject(index) ?: continue
-            if (item.optString("state") != "active") continue
-            val expires = item.optString("expiresAt")
-            if (expires.isNotEmpty()) {
-                val until = runCatching { Instant.parse(expires) }.getOrNull() ?: continue
-                if (!until.isAfter(now)) continue
+    private fun parseChart(svg: String, day: String): DaySchedule? {
+        val texts = texts(svg)
+        val track = track(svg) ?: return null
+        val stampDate = texts.firstNotNullOfOrNull { updatedDate(it.body) } ?: return null
+        val stampClock = texts.filter { it.y < 90 && it.body.matches(Regex("""\d{2}:\d{2}""")) }
+            .maxByOrNull { it.x }?.body
+        val date = chartDate(texts, stampDate) ?: return null
+        val stamp = listOf(stampDate, stampClock).filterNotNull().joinToString(" ")
+        val groups = linkedMapOf<String, List<Outage>>()
+        for (label in texts) {
+            if (label.x >= 180 || !queueId.matches(label.body)) continue
+            val bars = offRects(svg).filter { abs(it.centerY - label.y) <= 24 }
+            val merged = merge(bars.map { it.x to it.x + it.width }.sortedBy { it.first })
+            groups[label.body] = merged.mapNotNull { (start, end) ->
+                val from = minuteAt(start, track)
+                val to = minuteAt(end, track)
+                if (to > from) Outage(from, to) else null
             }
-            val message = item.optString("message").trim()
-            if (message.isNotEmpty()) into.add(message)
         }
-    }
-
-    private fun dedupe(messages: List<String>): String {
-        val unique = messages.distinct()
-        return unique
-            .filter { message -> unique.none { other -> other != message && other.contains(message) } }
-            .joinToString("\n\n")
-    }
-
-    private fun daySchedule(
-        day: String,
-        iso: String,
-        groups: Map<String, List<Outage>>,
-        updated: Map<String, String>,
-    ): DaySchedule? {
-        val date = runCatching { LocalDate.parse(iso, isoDate) }.getOrNull() ?: return null
+        if (groups.isEmpty()) return null
         return DaySchedule(
             day = day,
             label = date.format(labelFormat),
             updatedDate = date.format(dayDate),
             updatedTime = "",
             groups = groups,
-            groupUpdated = updated,
+            groupUpdated = groups.keys.associateWith { stamp },
         )
     }
 
-    private fun formatStamp(iso: String): String? {
-        val instant = runCatching { Instant.parse(iso) }.getOrNull() ?: return null
-        val zoned = instant.atZone(zone)
-        return zoned.format(dayDate) + " " + zoned.format(clock)
+    private fun parseLive(html: String): List<LiveGroup> {
+        return liveChip.findAll(html).mapNotNull { match ->
+            val classes = match.groupValues[1].split(Regex("\\s+"))
+            val group = match.groupValues[2]
+            if (!queueId.matches(group)) return@mapNotNull null
+            val toward = when {
+                match.groupValues[3].contains("OFF") -> "OFF"
+                match.groupValues[3].contains("ON") -> "ON"
+                else -> return@mapNotNull null
+            }
+            val seconds = match.groupValues[4].toIntOrNull() ?: return@mapNotNull null
+            LiveGroup(
+                id = group,
+                powerOn = "on" in classes && "off" !in classes,
+                toward = toward,
+                seconds = seconds,
+            )
+        }.distinctBy { it.id }.toList()
     }
 
-    private fun extractRows(html: String): JSONArray? {
-        val idAt = html.indexOf("id=\"ng-state\"")
-        if (idAt < 0) return null
-        val start = html.lastIndexOf("<script", idAt)
-        if (start < 0) return null
-        val jsonStart = html.indexOf('>', idAt)
-        val jsonEnd = html.indexOf("</script>", jsonStart + 1)
-        if (jsonStart < 0 || jsonEnd < 0) return null
-        var body = html.substring(jsonStart + 1, jsonEnd).trim()
-        if (!body.startsWith("{")) {
-            body = body
-                .replace("&amp;", "&")
-                .replace("&quot;", "\"")
-                .replace("&#34;", "\"")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
+    private fun parseHouses(html: String): List<HouseStatus> {
+        return houseBlock.findAll(html).mapNotNull { match ->
+            val group = match.groupValues[2]
+            if (!queueId.matches(group)) return@mapNotNull null
+            val body = match.groupValues[4]
+            val address = unescape(Regex("""<span class="addr"><b>(.*?)</b>""").find(body)?.groupValues?.get(1).orEmpty())
+            if (address.isBlank()) return@mapNotNull null
+            val complex = Regex("""<small class="complex-tag">(.*?)</small>""")
+                .find(body)?.groupValues?.get(1)?.let(::unescape)?.takeIf { it.isNotBlank() }
+            val since = Regex("""title="([^"]*з [^"]+)"""").find(body)?.groupValues?.get(1)?.let(::unescape)
+            HouseStatus(
+                group = group,
+                powerOn = match.groupValues[3] == "on",
+                address = address,
+                complex = complex,
+                since = since,
+            )
+        }.toList()
+    }
+
+    private data class TextRun(val x: Double, val y: Double, val body: String)
+    private data class Bar(val x: Double, val width: Double, val centerY: Double)
+    private data class Track(val origin: Double, val width: Double)
+
+    private fun texts(svg: String): List<TextRun> {
+        return textTag.findAll(svg).mapNotNull { match ->
+            val values = attributes(match.groupValues[1])
+            val x = values["x"]?.toDoubleOrNull() ?: return@mapNotNull null
+            val y = values["y"]?.toDoubleOrNull() ?: return@mapNotNull null
+            val body = unescape(match.groupValues[2].replace(Regex("<[^>]+>"), "")).trim()
+            if (body.isEmpty()) null else TextRun(x, y, body)
+        }.toList()
+    }
+
+    private fun offRects(svg: String): List<Bar> {
+        return rectTag.findAll(svg).mapNotNull { match ->
+            val values = attributes(match.groupValues[1])
+            val fill = values["fill"].orEmpty()
+            if (!fill.contains("CBCAC5", ignoreCase = true)) return@mapNotNull null
+            val x = values["x"]?.toDoubleOrNull() ?: return@mapNotNull null
+            val y = values["y"]?.toDoubleOrNull() ?: return@mapNotNull null
+            val width = values["width"]?.toDoubleOrNull() ?: return@mapNotNull null
+            val height = values["height"]?.toDoubleOrNull() ?: return@mapNotNull null
+            if (height !in 20.0..60.0) return@mapNotNull null
+            Bar(x, width, y + height / 2)
+        }.toList()
+    }
+
+    private fun track(svg: String): Track? {
+        return rectTag.findAll(svg).firstNotNullOfOrNull { match ->
+            val values = attributes(match.groupValues[1])
+            val x = values["x"]?.toDoubleOrNull() ?: return@firstNotNullOfOrNull null
+            val width = values["width"]?.toDoubleOrNull() ?: return@firstNotNullOfOrNull null
+            if (x in 180.0..280.0 && width in 1000.0..1300.0) Track(x, width) else null
         }
-        val state = JSONObject(body)
-        return state.optJSONObject(STATE_KEY)?.optJSONArray("data")
     }
 
-    private fun emptyPage(): ParsedPage {
-        return ParsedPage(
-            days = emptyList(),
-            live = emptyList(),
-            houses = emptyList(),
-            tomorrowMissing = true,
-            note = "",
-        )
+    private fun minuteAt(x: Double, track: Track): Int {
+        val raw = (x - track.origin) / track.width * 1440.0
+        return (raw / 30.0).roundToInt().times(30).coerceIn(0, 1440)
     }
 
-    private sealed interface Hours {
-        data object Absent : Hours
-        data object Unusable : Hours
-        data object Emergency : Hours
-        class Ok(val slots: BooleanArray) : Hours
+    private fun merge(segments: List<Pair<Double, Double>>): List<Pair<Double, Double>> {
+        val merged = mutableListOf<Pair<Double, Double>>()
+        for ((start, end) in segments) {
+            val last = merged.lastOrNull()
+            if (last != null && start <= last.second + 3) {
+                merged[merged.lastIndex] = last.first to maxOf(last.second, end)
+            } else {
+                merged += start to end
+            }
+        }
+        return merged
     }
+
+    private fun updatedDate(body: String): String? {
+        return Regex("""Оновлено\s+(\d{2}\.\d{2}\.\d{4})""").find(body)?.groupValues?.get(1)
+    }
+
+    private fun chartDate(texts: List<TextRun>, stamp: String): LocalDate? {
+        val phrase = texts.firstOrNull { run -> months.keys.any { run.body.contains(it, ignoreCase = true) } }?.body
+            ?: return null
+        val match = Regex("""(\d{1,2})\s+([а-яіїєґА-ЯІЇЄҐ]+)""").find(phrase) ?: return null
+        val day = match.groupValues[1].toIntOrNull() ?: return null
+        val month = months[match.groupValues[2].lowercase(Locale.forLanguageTag("uk"))] ?: return null
+        val stampDate = runCatching { LocalDate.parse(stamp, dayDate) }.getOrNull() ?: return null
+        val candidate = runCatching { LocalDate.of(stampDate.year, month, day) }.getOrNull() ?: return null
+        return if (candidate.isBefore(stampDate.minusDays(1))) candidate.plusYears(1) else candidate
+    }
+
+    private fun attributes(source: String): Map<String, String> {
+        return attr.findAll(source).associate { it.groupValues[1] to it.groupValues[2] }
+    }
+
+    private fun unescape(value: String): String {
+        return value
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&#34;", "\"")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .trim()
+    }
+
+    private fun abs(value: Double) = if (value < 0) -value else value
+
+    private fun emptyPage() = ParsedPage(
+        days = emptyList(),
+        live = emptyList(),
+        houses = emptyList(),
+        tomorrowMissing = true,
+    )
 }

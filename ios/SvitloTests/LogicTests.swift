@@ -1,40 +1,30 @@
 import XCTest
 
 final class LogicTests: XCTestCase {
-    func testMapsOblenergoHourCodesAndIgnoresTheOtherOperator() {
-        let page = SvitloParser.parse(html: page(rows))
+    func testReadsChartBarsLiveChipAndHouseSensor() {
+        let page = SvitloParser.parse(html: sample(tomorrow: true, live: true, house: true))
         let today = page.days.first { $0.day == "today" }
         XCTAssertEqual(today?.updatedDate, "09.11.2026")
-        XCTAssertEqual(today?.groups["2.1"], [
-            Outage(startMin: 0, endMin: 210),
-            Outage(startMin: 570, endMin: 1050),
-            Outage(startMin: 1230, endMin: 1440),
-        ])
         XCTAssertEqual(today?.groups["1.1"], [
             Outage(startMin: 0, endMin: 360),
             Outage(startMin: 600, endMin: 990),
             Outage(startMin: 1170, endMin: 1440),
         ])
-        XCTAssertEqual(today?.groupUpdated["2.1"], "09.11.2026 08:05")
-        XCTAssertNil(today?.groups["9.9"])
-        XCTAssertTrue(page.live.isEmpty)
-        XCTAssertTrue(page.houses.isEmpty)
-        XCTAssertTrue(page.tomorrowMissing)
-        XCTAssertEqual(page.note, "В інших районах діють стабілізаційні відключення.")
-    }
-
-    func testUnionsPossibleSlotsAndDropsUnusableDays() {
-        let page = SvitloParser.parse(html: page(edgeRows))
-        let today = page.days.first { $0.day == "today" }
-        XCTAssertEqual(today?.groups["1.1"], [Outage(startMin: 600, endMin: 660)])
-        XCTAssertEqual(today?.groups["1.2"], [])
-        XCTAssertNil(today?.groups["2.1"])
-        XCTAssertNil(today?.groups["2.2"])
-        XCTAssertNil(today?.groups["3.1"])
-        XCTAssertNil(today?.groups["3.2"])
+        XCTAssertEqual(today?.groups["2.1"], [
+            Outage(startMin: 0, endMin: 210),
+            Outage(startMin: 570, endMin: 1050),
+            Outage(startMin: 1230, endMin: 1440),
+        ])
+        XCTAssertEqual(today?.groupUpdated["1.1"], "08.11.2026 23:45")
         let tomorrow = page.days.first { $0.day == "tomorrow" }
         XCTAssertEqual(tomorrow?.groups["1.1"], [Outage(startMin: 0, endMin: 60)])
         XCTAssertFalse(page.tomorrowMissing)
+        XCTAssertEqual(page.live.map(\.id), ["1.1"])
+        XCTAssertEqual(page.live.first?.powerOn, false)
+        XCTAssertEqual(page.live.first?.toward, "ON")
+        XCTAssertEqual(page.live.first?.seconds, 100)
+        XCTAssertEqual(page.houses.first?.address, "Кургузова, 11В")
+        XCTAssertEqual(page.houses.first?.powerOn, false)
     }
 
     func testEmptyPageDoesNotInventASchedule() {
@@ -45,7 +35,7 @@ final class LogicTests: XCTestCase {
 
     func testTenMinuteWarningAndNextSwitchUseKyivSchedule() {
         let now = kyiv(2026, 11, 9, 16, 40)
-        let parsed = SvitloParser.parse(html: page(rows))
+        let parsed = SvitloParser.parse(html: sample(tomorrow: false, live: false, house: false))
         let snapshot = Snapshot(
             fetchedAt: now,
             days: parsed.days,
@@ -141,45 +131,39 @@ final class LogicTests: XCTestCase {
         return ScheduleMath.millis(date)
     }
 
-    private func page(_ rows: String) -> String {
-        "<script id=\"ng-state\" type=\"application/json\">{\"api:/source-registry/areas/kyivska-oblast/shutdowns\":{\"data\":\(rows),\"ts\":1}}</script>"
+    private func sample(tomorrow: Bool, live: Bool, house: Bool) -> String {
+        var html = chart("понеділок, 9 листопада", rows: [
+            ("1.1", [Outage(startMin: 0, endMin: 360), Outage(startMin: 600, endMin: 990), Outage(startMin: 1170, endMin: 1440)]),
+            ("2.1", [Outage(startMin: 0, endMin: 210), Outage(startMin: 570, endMin: 1050), Outage(startMin: 1230, endMin: 1440)]),
+        ])
+        if tomorrow {
+            html += chart("вівторок, 10 листопада", rows: [("1.1", [Outage(startMin: 0, endMin: 60)])])
+        }
+        if live {
+            html += #"<span class="group off" data-g="1.1"><b>1.1</b><small>до ON</small><span class="mono" data-sec="100">--:--:--</span></span>"#
+        }
+        if house {
+            html += #"<div class="house off" data-g="1.1" data-st="off" data-q="кургузова"><span class="addr"><b>Кургузова, 11В</b><small class="complex-tag">Зірковий</small></span></div>"#
+        }
+        return html
     }
 
-    private var zeros: String { Array(repeating: "0", count: 24).joined(separator: ",") }
-
-    private var note: String {
-        #"{"state":"active","kind":"Emergency","expiresAt":"2099-01-01T00:00:00Z","message":"В інших районах діють стабілізаційні відключення."}"#
-    }
-
-    private var shortNote: String {
-        #"{"state":"active","kind":"GPV","expiresAt":"2099-01-01T00:00:00Z","message":"стабілізаційні"}"#
-    }
-
-    private var expired: String {
-        #"{"state":"active","kind":"Emergency","expiresAt":"2000-01-01T00:00:00Z","message":"прострочене"}"#
-    }
-
-    private var rows: String {
-        """
-        [
-          {"initiator":"kyivska_oblast_uz","queue":"2.1","updated":"2026-11-09T06:05:00.201Z","today":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[\(zeros)],"todayAnnouncements":[]},
-          {"initiator":"kyivska_oblast_oblenergo","queue":"2.1","updated":"2026-11-09T06:05:00.201Z","today":[1,1,1,2,0,0,0,0,0,3,1,1,1,1,1,1,1,2,0,0,3,1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[\(zeros)],"todayAnnouncements":[\(note),\(shortNote),\(expired)]},
-          {"initiator":"kyivska_oblast_oblenergo","queue":"1.1","updated":"2026-11-08T21:45:10.007Z","today":[1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,2,0,0,3,1,1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[\(zeros)],"todayAnnouncements":[\(note)]},
-          {"initiator":"kyivska_oblast_oblenergo","queue":"9.9","updated":"2026-11-09T06:05:00.201Z","today":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10"}
+    private func chart(_ phrase: String, rows: [(String, [Outage])]) -> String {
+        var texts = [
+            #"<text x="1200" y="63">Оновлено 08.11.2026</text>"#,
+            #"<text x="1360" y="64">23:45</text>"#,
+            #"<text x="277" y="73">\#(phrase)</text>"#,
         ]
-        """
-    }
-
-    private var edgeRows: String {
-        """
-        [
-          {"initiator":"kyivska_oblast_oblenergo","queue":"1.1","updated":"2026-11-09T06:05:00.201Z","today":[\(zeros)],"tomorrow":[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"todayStatus":"ScheduleApplies","tomorrowStatus":"ScheduleApplies","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-          {"initiator":"kyivska_oblast_oblenergo","queue":"1.2","updated":"2026-11-09T06:05:00.201Z","today":[\(zeros)],"tomorrow":[],"todayStatus":"NoShutdowns","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[\(zeros)]},
-          {"initiator":"kyivska_oblast_oblenergo","queue":"2.1","updated":"2026-11-09T06:05:00.201Z","today":[9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10"},
-          {"initiator":"kyivska_oblast_oblenergo","queue":"2.2","updated":"2026-11-09T06:05:00.201Z","today":[\(zeros)],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":null},
-          {"initiator":"kyivska_oblast_oblenergo","queue":"3.1","updated":"2026-11-09T06:05:00.201Z","today":[1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10"},
-          {"initiator":"kyivska_oblast_oblenergo","queue":"3.2","updated":"2026-11-09T06:05:00.201Z","today":[\(zeros)],"tomorrow":[],"todayStatus":"EmergencyShutdowns","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10"}
-        ]
-        """
+        var rects = [#"<rect x="230" y="120" width="1118" height="40" fill="#FFFFFF"/>"#]
+        for (index, row) in rows.enumerated() {
+            let labelY = 170.0 + Double(index) * 48
+            texts.append(#"<text x="92" y="\#(labelY)">\#(row.0)</text>"#)
+            for outage in row.1 {
+                let x = 230.0 + Double(outage.startMin) / 1440.0 * 1118.0
+                let width = Double(outage.endMin - outage.startMin) / 1440.0 * 1118.0
+                rects.append(#"<rect x="\#(x)" y="\#(labelY - 28)" width="\#(width)" height="45" fill="#CBCAC5"/>"#)
+            }
+        }
+        return #"<div class="sg-svg sg-svg-light"><svg>\#(rects.joined())\#(texts.joined())</svg></div>"#
     }
 }

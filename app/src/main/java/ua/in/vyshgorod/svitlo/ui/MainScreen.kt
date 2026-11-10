@@ -210,7 +210,7 @@ fun MainScreen(
                 SectionTitle("Адрес")
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "По всей Киевской области. Адрес только выбирает группу, свет считается по графику.",
+                    "По всей Киевской области. Адрес выбирает группу. Если дом есть на vyshgorod.in.ua, статус берётся с датчика.",
                     color = LocalSvitloColors.current.muted,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -334,7 +334,7 @@ fun MainScreen(
                 }
                 Text("ДТЕК · Киевские региональные электросети", color = LocalSvitloColors.current.muted, fontSize = 12.sp)
                 Spacer(Modifier.height(4.dp))
-                Text("Открыть график на alerts.energy", color = LocalSvitloColors.current.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text("Открыть график на сайте", color = LocalSvitloColors.current.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -374,7 +374,7 @@ private fun StatusCard(selection: Selection, picture: PowerPicture?, fetchedAt: 
                 if (wide) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            StatusHeading(selection, title, color, on)
+                            StatusHeading(selection, title, color, on, picture?.usingHouse == true)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(hint.duration.orEmpty(), color = color, fontSize = 28.sp, fontWeight = FontWeight.Bold)
@@ -383,7 +383,7 @@ private fun StatusCard(selection: Selection, picture: PowerPicture?, fetchedAt: 
                         }
                     }
                 } else {
-                    StatusHeading(selection, title, color, on)
+                    StatusHeading(selection, title, color, on, picture?.usingHouse == true)
                     Spacer(Modifier.height(10.dp))
                     Text(hint.whenText, color = LocalSvitloColors.current.ink, fontSize = 16.sp, lineHeight = 22.sp)
                     if (hint.duration != null) {
@@ -411,7 +411,7 @@ private fun StatusCard(selection: Selection, picture: PowerPicture?, fetchedAt: 
 }
 
 @Composable
-private fun StatusHeading(selection: Selection, title: String, color: Color, on: Boolean?) {
+private fun StatusHeading(selection: Selection, title: String, color: Color, on: Boolean?, usingHouse: Boolean) {
     val place = selection.placeLabel
     Text(
         when {
@@ -425,7 +425,11 @@ private fun StatusHeading(selection: Selection, title: String, color: Color, on:
     Spacer(Modifier.height(4.dp))
     Text(title, color = color, fontSize = 36.sp, fontWeight = FontWeight.Bold)
     if (selection.group.isNotBlank() && on != null) {
-        Text("По графику, без датчика в доме", color = LocalSvitloColors.current.muted, fontSize = 13.sp)
+        Text(
+            if (usingHouse) "По датчику этого дома" else "По графику",
+            color = LocalSvitloColors.current.muted,
+            fontSize = 13.sp,
+        )
     }
 }
 

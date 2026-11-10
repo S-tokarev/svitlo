@@ -34,7 +34,7 @@ struct Provider: TimelineProvider {
         }
         let unique = Array(Set(dates.map { Int($0.timeIntervalSince1970 / 60) })).sorted()
         let entries = unique.map { entry(at: Date(timeIntervalSince1970: TimeInterval($0 * 60))) }
-        completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(10 * 60))))
+        completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(30 * 60))))
     }
 
     private func entry(at date: Date) -> WidgetEntry {
@@ -45,7 +45,7 @@ struct Provider: TimelineProvider {
                 date: date, background: Color(hex: 0x22201C), statusColor: Color(hex: 0xF6F1E7),
                 ink: Color(hex: 0xF6F1E7), muted: Color(hex: 0xB6AB9C),
                 kicker: "Светло", status: "Выберите группу", next: "Откройте приложение",
-                footer: "График ДТЕК · alerts.energy"
+                footer: "vyshgorod.in.ua/svitlo"
             )
         }
         let now = ScheduleMath.millis(date)

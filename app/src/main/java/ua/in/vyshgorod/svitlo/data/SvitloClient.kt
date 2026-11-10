@@ -4,21 +4,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object SvitloClient {
-    /**
-     * One schedule page embeds every queue. The paid JSON API (Bearer) answers 401,
-     * so the app reads the same payload from this public page.
-     */
-    private const val SCHEDULE =
-        "https://alerts.energy/kyivska-oblast/schedule/kyivska-oblast-oblenergo/2.1"
+    private const val SCHEDULE = "https://vyshgorod.in.ua/svitlo"
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
 
-    fun pageFor(group: String): String {
-        val queue = if (group.matches(Regex("""^[1-6]\.[12]$"""))) group else "2.1"
-        return "https://alerts.energy/kyivska-oblast/schedule/kyivska-oblast-oblenergo/$queue"
-    }
+    fun pageFor(group: String): String = SCHEDULE
 
-    fun fetchPage(): String = get(SCHEDULE, referer = "https://alerts.energy/")
+    fun fetchPage(): String = get(SCHEDULE, referer = "https://vyshgorod.in.ua/")
 
     private fun get(url: String, referer: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {

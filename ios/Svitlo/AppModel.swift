@@ -25,7 +25,7 @@ enum RefreshScheduler {
 
     static func schedule() {
         let request = BGAppRefreshTaskRequest(identifier: AppGroup.refreshTaskId)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 10 * 60)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
         try? BGTaskScheduler.shared.submit(request)
     }
 }
@@ -83,7 +83,7 @@ final class AppModel: ObservableObject {
 
     func refreshIfStale() async {
         let fetched = snapshot?.fetchedAt ?? 0
-        if snapshot == nil || ScheduleMath.millis(Date()) - fetched >= 10 * 60 * 1000 {
+        if snapshot == nil || ScheduleMath.millis(Date()) - fetched >= 30 * 60 * 1000 {
             await refresh(manual: false)
         } else {
             Notifier.reschedule(selection: selection, snapshot: snapshot)

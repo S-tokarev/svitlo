@@ -64,7 +64,7 @@ struct MainView: View {
                 .font(.system(size: 36, weight: .bold))
                 .foregroundStyle(color)
             if !model.selection.group.isEmpty && on != nil {
-                Text("По графику, без датчика в доме")
+                Text(picture?.usingHouse == true ? "По датчику этого дома" : "По графику")
                     .font(.caption)
                     .foregroundStyle(palette.muted)
             }
@@ -132,7 +132,7 @@ struct MainView: View {
     private var address: some View {
         card {
             Text("Адрес").font(.headline).foregroundStyle(palette.ink)
-            Text("По всей Киевской области. Адрес только выбирает группу, свет считается по графику.")
+            Text("По всей Киевской области. Адрес выбирает группу. Если дом есть на vyshgorod.in.ua, статус берётся с датчика.")
                 .font(.caption)
                 .foregroundStyle(palette.muted)
             TextField("Улица и дом, например Буча Шевченка 11", text: $model.query)

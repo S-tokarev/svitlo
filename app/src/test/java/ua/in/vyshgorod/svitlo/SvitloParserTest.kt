@@ -12,43 +12,35 @@ import ua.`in`.vyshgorod.svitlo.data.SvitloParser
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
 import java.time.LocalDate
 import java.time.LocalTime
-import java.time.ZoneId
 
 class SvitloParserTest {
     @Test
-    fun mapsOblenergoHourCodesAndIgnoresTheOtherOperator() {
-        val page = SvitloParser.parse(page(ROWS))
+    fun readsChartBarsLiveChipAndHouseSensor() {
+        val page = SvitloParser.parse(page(today = true, tomorrow = true, live = true, house = true))
         val today = page.days.single { it.day == "today" }
         assertEquals("09.11.2026", today.updatedDate)
-        assertEquals(
-            listOf(Outage(0, 210), Outage(570, 1050), Outage(1230, 1440)),
-            today.groups["2.1"],
-        )
         assertEquals(
             listOf(Outage(0, 360), Outage(600, 990), Outage(1170, 1440)),
             today.groups["1.1"],
         )
-        assertEquals("09.11.2026 08:05", today.groupUpdated["2.1"])
-        assertFalse(today.groups.containsKey("9.9"))
-        assertTrue(page.live.isEmpty())
-        assertTrue(page.houses.isEmpty())
-        assertTrue(page.tomorrowMissing)
-        assertEquals("В інших районах діють стабілізаційні відключення.", page.note)
-    }
-
-    @Test
-    fun unionsPossibleSlotsAndDropsUnusableDays() {
-        val page = SvitloParser.parse(page(EDGE_ROWS))
-        val today = page.days.single { it.day == "today" }
-        assertEquals(listOf(Outage(600, 660)), today.groups["1.1"])
-        assertEquals(emptyList<Outage>(), today.groups["1.2"])
-        assertFalse(today.groups.containsKey("2.1"))
-        assertFalse(today.groups.containsKey("2.2"))
-        assertFalse(today.groups.containsKey("3.1"))
-        assertFalse(today.groups.containsKey("3.2"))
+        assertEquals(
+            listOf(Outage(0, 210), Outage(570, 1050), Outage(1230, 1440)),
+            today.groups["2.1"],
+        )
+        assertEquals("08.11.2026 23:45", today.groupUpdated["1.1"])
         val tomorrow = page.days.single { it.day == "tomorrow" }
         assertEquals(listOf(Outage(0, 60)), tomorrow.groups["1.1"])
         assertFalse(page.tomorrowMissing)
+        val live = page.live.single()
+        assertEquals("1.1", live.id)
+        assertFalse(live.powerOn)
+        assertEquals("ON", live.toward)
+        assertEquals(100, live.seconds)
+        val house = page.houses.single()
+        assertEquals("1.1", house.group)
+        assertEquals("Кургузова, 11В", house.address)
+        assertFalse(house.powerOn)
+        assertEquals("Зірковий", house.complex)
     }
 
     @Test
@@ -60,11 +52,11 @@ class SvitloParserTest {
 
     @Test
     fun tenMinuteWarningAndNextSwitchUseKyivSchedule() {
-        val zone = ZoneId.of("Europe/Kyiv")
+        val zone = ScheduleMath.zone
         val now = LocalDate.of(2026, 11, 9).atTime(16, 40).atZone(zone).toInstant().toEpochMilli()
         val snapshot = Snapshot(
             fetchedAt = now,
-            days = SvitloParser.parse(page(ROWS)).days,
+            days = SvitloParser.parse(page(today = true, tomorrow = false, live = false, house = false)).days,
             live = emptyList(),
             houses = emptyList(),
             tomorrowMissing = true,
@@ -95,40 +87,47 @@ class SvitloParserTest {
         assertFalse(ScheduleMath.isQuietHour(at(18, 11)))
     }
 
-    private fun page(rows: String): String {
-        return """<script id="ng-state" type="application/json">{"api:/source-registry/areas/kyivska-oblast/shutdowns":{"data":$rows,"ts":1}}</script>"""
+    private fun page(today: Boolean, tomorrow: Boolean, live: Boolean, house: Boolean): String {
+        val charts = buildString {
+            if (today) {
+                append(chart("понеділок, 9 листопада", "1.1" to TODAY_11, "2.1" to TODAY_21))
+            }
+            if (tomorrow) append(chart("вівторок, 10 листопада", "1.1" to listOf(Outage(0, 60))))
+        }
+        val chip = if (live) {
+            """<span class="group off" data-g="1.1"><b>1.1</b><small>до ON</small><span class="mono" data-sec="100">--:--:--</span></span>"""
+        } else {
+            ""
+        }
+        val sensor = if (house) {
+            """<div class="house off" data-g="1.1" data-st="off" data-q="кургузова"><span class="addr"><b>Кургузова, 11В</b><small class="complex-tag">Зірковий</small></span><span title="Світла немає з 09.11.2026 17:07"></span></div>"""
+        } else {
+            ""
+        }
+        return charts + chip + sensor
+    }
+
+    private fun chart(phrase: String, vararg rows: Pair<String, List<Outage>>): String {
+        val texts = mutableListOf(
+            """<text x="1200" y="63">Оновлено 08.11.2026</text>""",
+            """<text x="1360" y="64">23:45</text>""",
+            """<text x="277" y="73">$phrase</text>""",
+        )
+        val rects = mutableListOf("""<rect x="230" y="120" width="1118" height="40" fill="#FFFFFF"/>""")
+        rows.forEachIndexed { index, (group, outages) ->
+            val labelY = 170.0 + index * 48.0
+            texts += """<text x="92" y="$labelY">$group</text>"""
+            for (outage in outages) {
+                val x = 230.0 + outage.startMin / 1440.0 * 1118.0
+                val width = (outage.endMin - outage.startMin) / 1440.0 * 1118.0
+                rects += """<rect x="$x" y="${labelY - 28}" width="$width" height="45" fill="#CBCAC5"/>"""
+            }
+        }
+        return """<div class="sg-svg sg-svg-light"><svg>${rects.joinToString("")}${texts.joinToString("")}</svg></div>"""
     }
 
     private companion object {
-        private const val ZEROS = "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"
-        private val NOTE = """
-            {"state":"active","kind":"Emergency","expiresAt":"2099-01-01T00:00:00Z","message":"В інших районах діють стабілізаційні відключення."}
-        """.trimIndent()
-        private val SHORT_NOTE = """
-            {"state":"active","kind":"GPV","expiresAt":"2099-01-01T00:00:00Z","message":"стабілізаційні"}
-        """.trimIndent()
-        private val EXPIRED = """
-            {"state":"active","kind":"Emergency","expiresAt":"2000-01-01T00:00:00Z","message":"прострочене"}
-        """.trimIndent()
-
-        val ROWS = """
-            [
-              {"initiator":"kyivska_oblast_uz","queue":"2.1","updated":"2026-11-09T06:05:00.201Z","today":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[$ZEROS],"todayAnnouncements":[]},
-              {"initiator":"kyivska_oblast_oblenergo","queue":"2.1","updated":"2026-11-09T06:05:00.201Z","today":[1,1,1,2,0,0,0,0,0,3,1,1,1,1,1,1,1,2,0,0,3,1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[$ZEROS],"todayAnnouncements":[$NOTE,$SHORT_NOTE,$EXPIRED]},
-              {"initiator":"kyivska_oblast_oblenergo","queue":"1.1","updated":"2026-11-08T21:45:10.007Z","today":[1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1,2,0,0,3,1,1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[$ZEROS],"todayAnnouncements":[$NOTE]},
-              {"initiator":"kyivska_oblast_oblenergo","queue":"9.9","updated":"2026-11-09T06:05:00.201Z","today":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10"}
-            ]
-        """.trimIndent()
-
-        val EDGE_ROWS = """
-            [
-              {"initiator":"kyivska_oblast_oblenergo","queue":"1.1","updated":"2026-11-09T06:05:00.201Z","today":[$ZEROS],"tomorrow":[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"todayStatus":"ScheduleApplies","tomorrowStatus":"ScheduleApplies","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0]},
-              {"initiator":"kyivska_oblast_oblenergo","queue":"1.2","updated":"2026-11-09T06:05:00.201Z","today":[$ZEROS],"tomorrow":[],"todayStatus":"NoShutdowns","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":[$ZEROS]},
-              {"initiator":"kyivska_oblast_oblenergo","queue":"2.1","updated":"2026-11-09T06:05:00.201Z","today":[9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10"},
-              {"initiator":"kyivska_oblast_oblenergo","queue":"2.2","updated":"2026-11-09T06:05:00.201Z","today":[$ZEROS],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10","todayPossible":null},
-              {"initiator":"kyivska_oblast_oblenergo","queue":"3.1","updated":"2026-11-09T06:05:00.201Z","today":[1,1,1],"tomorrow":[],"todayStatus":"ScheduleApplies","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10"},
-              {"initiator":"kyivska_oblast_oblenergo","queue":"3.2","updated":"2026-11-09T06:05:00.201Z","today":[$ZEROS],"tomorrow":[],"todayStatus":"EmergencyShutdowns","tomorrowStatus":"WaitingForSchedule","todayDate":"2026-11-09","tomorrowDate":"2026-11-10"}
-            ]
-        """.trimIndent()
+        val TODAY_11 = listOf(Outage(0, 360), Outage(600, 990), Outage(1170, 1440))
+        val TODAY_21 = listOf(Outage(0, 210), Outage(570, 1050), Outage(1230, 1440))
     }
 }

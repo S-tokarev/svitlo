@@ -1,264 +1,269 @@
 import Foundation
 
 enum SvitloParser {
-    private static let stateKey = "api:/source-registry/areas/kyivska-oblast/shutdowns"
-    private static let initiator = "kyivska_oblast_oblenergo"
     private static let queueId = try! NSRegularExpression(pattern: "^[1-6]\\.[12]$")
+    private static let months = [
+        "січня": 1, "лютого": 2, "березня": 3, "квітня": 4, "травня": 5, "червня": 6,
+        "липня": 7, "серпня": 8, "вересня": 9, "жовтня": 10, "листопада": 11, "грудня": 12,
+    ]
 
     static func parse(html: String) -> ParsedPage {
-        guard let rows = extractRows(html) else { return emptyPage() }
-        return parseRows(rows)
-    }
-
-    static func parseRows(_ rows: [Any]) -> ParsedPage {
-        var todayGroups: [String: [Outage]] = [:]
-        var todayUpdated: [String: String] = [:]
-        var tomorrowGroups: [String: [Outage]] = [:]
-        var tomorrowUpdated: [String: String] = [:]
-        var todayDate = ""
-        var tomorrowDate = ""
-        var sawOperator = false
-        var messages: [String] = []
-
-        for item in rows {
-            guard let row = item as? [String: Any] else { continue }
-            guard string(row["initiator"]) == initiator else { continue }
-            let queue = string(row["queue"])
-            guard queueId.firstMatch(in: queue, range: NSRange(queue.startIndex..., in: queue)) != nil else { continue }
-            sawOperator = true
-            let stamp = formatStamp(string(row["updated"]))
-            let rowToday = string(row["todayDate"])
-            let rowTomorrow = string(row["tomorrowDate"])
-            if todayDate.isEmpty { todayDate = rowToday }
-            if tomorrowDate.isEmpty { tomorrowDate = rowTomorrow }
-            if publish(row, "todayStatus", "today", "todayPossible", todayDate, "todayDate", &todayGroups, queue), let stamp {
-                todayUpdated[queue] = stamp
-            }
-            if publish(row, "tomorrowStatus", "tomorrow", "tomorrowPossible", tomorrowDate, "tomorrowDate", &tomorrowGroups, queue), let stamp {
-                tomorrowUpdated[queue] = stamp
-            }
-            collectMessages(row["todayAnnouncements"], into: &messages)
-            collectMessages(row["tomorrowAnnouncements"], into: &messages)
+        let charts = lightSvgs(html).enumerated().compactMap { index, svg in
+            parseChart(svg, day: index == 0 ? "today" : "tomorrow")
         }
-
-        guard sawOperator else { return emptyPage() }
-        let today = daySchedule("today", todayDate, todayGroups, todayUpdated)
-        let tomorrow = tomorrowGroups.isEmpty ? nil : daySchedule("tomorrow", tomorrowDate, tomorrowGroups, tomorrowUpdated)
+        guard let today = charts.first(where: { $0.day == "today" }), !today.groups.isEmpty else { return emptyPage() }
+        let tomorrow = charts.first { $0.day == "tomorrow" }
         return ParsedPage(
             days: [today, tomorrow].compactMap { $0 },
-            live: [],
-            houses: [],
+            live: parseLive(html),
+            houses: parseHouses(html),
             tomorrowMissing: tomorrow == nil,
-            note: dedupe(messages)
+            note: ""
         )
     }
 
-    static func toOutages(_ slots: [Bool]) -> [Outage] {
-        var result: [Outage] = []
-        var start = -1
-        for index in 0...slots.count {
-            let on = index < slots.count && slots[index]
-            if on && start < 0 { start = index }
-            if !on && start >= 0 {
-                result.append(Outage(startMin: start * 30, endMin: index * 30))
-                start = -1
-            }
+    private static func lightSvgs(_ html: String) -> [String] {
+        let marker = "<div class=\"sg-svg sg-svg-light\">"
+        var result: [String] = []
+        var from = html.startIndex
+        while result.count < 2, let start = html.range(of: marker, range: from..<html.endIndex) {
+            guard let svgStart = html.range(of: "<svg", range: start.lowerBound..<html.endIndex),
+                  let svgEnd = html.range(of: "</svg></div>", range: svgStart.lowerBound..<html.endIndex) else { break }
+            let close = html.index(svgEnd.lowerBound, offsetBy: "</svg>".count)
+            result.append(String(html[svgStart.lowerBound..<close]))
+            from = svgEnd.upperBound
         }
         return result
     }
 
-    private static func publish(
-        _ row: [String: Any],
-        _ statusKey: String,
-        _ arrayKey: String,
-        _ possibleKey: String,
-        _ expectedDate: String,
-        _ dateKey: String,
-        _ groups: inout [String: [Outage]],
-        _ queue: String
-    ) -> Bool {
-        let date = string(row[dateKey])
-        guard !expectedDate.isEmpty, date == expectedDate else { return false }
-        let slots: [Bool]?
-        switch string(row[statusKey]) {
-        case "ScheduleApplies":
-            slots = combine(readCodes(row, arrayKey, required: true), readCodes(row, possibleKey, required: false), zerosOnly: false)
-        case "NoShutdowns":
-            slots = combine(readCodes(row, arrayKey, required: true), readCodes(row, possibleKey, required: false), zerosOnly: true)
-        default:
-            slots = nil
-        }
-        guard let slots else { return false }
-        groups[queue] = toOutages(slots)
-        return true
-    }
-
-    private enum Hours {
-        case absent
-        case unusable
-        case emergency
-        case ok([Bool])
-    }
-
-    private static func combine(_ planned: Hours, _ possible: Hours, zerosOnly: Bool) -> [Bool]? {
-        guard case .ok(let plan) = planned else { return nil }
-        if zerosOnly && plan.contains(true) { return nil }
-        switch possible {
-        case .absent:
-            return plan
-        case .ok(let extra):
-            return zip(plan, extra).map { $0 || $1 }
-        case .emergency, .unusable:
-            return nil
-        }
-    }
-
-    private static func readCodes(_ row: [String: Any], _ key: String, required: Bool) -> Hours {
-        guard row.keys.contains(key) else { return required ? .unusable : .absent }
-        guard let raw = row[key], !(raw is NSNull) else { return .unusable }
-        guard let value = raw as? [Any] else { return .unusable }
-        if value.isEmpty { return required ? .unusable : .absent }
-        if value.count != 24 { return .unusable }
-        var slots = Array(repeating: false, count: 48)
-        var emergency = false
-        for hour in 0..<24 {
-            guard let code = codeAt(value, hour) else { return .unusable }
-            switch code {
-            case 0:
-                break
-            case 1:
-                slots[hour * 2] = true
-                slots[hour * 2 + 1] = true
-            case 2:
-                slots[hour * 2] = true
-            case 3:
-                slots[hour * 2 + 1] = true
-            case 9:
-                emergency = true
-            default:
-                return .unusable
+    private static func parseChart(_ svg: String, day: String) -> DaySchedule? {
+        let runs = texts(svg)
+        guard let track = track(svg),
+              let stampDate = runs.compactMap({ updatedDate($0.body) }).first,
+              let date = chartDate(runs, stamp: stampDate) else { return nil }
+        let stampClock = runs.filter { $0.y < 90 && $0.body.range(of: #"^\d{2}:\d{2}$"#, options: .regularExpression) != nil }
+            .max { $0.x < $1.x }?.body
+        let stamp = [stampDate, stampClock].compactMap { $0 }.joined(separator: " ")
+        var groups: [String: [Outage]] = [:]
+        let bars = offRects(svg)
+        for label in runs where label.x < 180 && queueId.matches(label.body) {
+            let row = bars.filter { abs($0.centerY - label.y) <= 24 }
+            let merged = merge(row.map { ($0.x, $0.x + $0.width) }.sorted { $0.0 < $1.0 })
+            groups[label.body] = merged.compactMap { segment in
+                let from = minuteAt(segment.0, track)
+                let to = minuteAt(segment.1, track)
+                return to > from ? Outage(startMin: from, endMin: to) : nil
             }
         }
-        return emergency ? .emergency : .ok(slots)
+        guard !groups.isEmpty else { return nil }
+        return DaySchedule(
+            day: day,
+            label: format(date, "d MMMM", Locale(identifier: "ru_RU")),
+            updatedDate: format(date, "dd.MM.yyyy", Locale(identifier: "en_US_POSIX")),
+            updatedTime: "",
+            groups: groups,
+            groupUpdated: Dictionary(uniqueKeysWithValues: groups.keys.map { ($0, stamp) })
+        )
     }
 
-    private static func codeAt(_ array: [Any], _ index: Int) -> Int? {
-        guard let number = array[index] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
-        let code = number.intValue
-        if number.doubleValue != Double(code) { return nil }
-        return code
+    private static func parseLive(_ html: String) -> [LiveGroup] {
+        let pattern = #"<span class="group ([^"]*)" data-g="([^"]*)">\s*<b>[^<]*</b>\s*<small>([^<]*)</small>\s*<span class="mono[^"]*" data-sec="(\d+)""#
+        var seen: [String] = []
+        var result: [LiveGroup] = []
+        for match in captures(pattern, in: html) {
+            let classes = match[1].split(whereSeparator: \.isWhitespace).map(String.init)
+            let group = match[2]
+            guard queueId.matches(group), !seen.contains(group) else { continue }
+            let toward: String
+            if match[3].contains("OFF") { toward = "OFF" }
+            else if match[3].contains("ON") { toward = "ON" }
+            else { continue }
+            guard let seconds = Int(match[4]) else { continue }
+            seen.append(group)
+            result.append(LiveGroup(
+                id: group,
+                powerOn: classes.contains("on") && !classes.contains("off"),
+                toward: toward,
+                seconds: seconds
+            ))
+        }
+        return result
     }
 
-    private static func collectMessages(_ raw: Any?, into messages: inout [String]) {
-        guard let array = raw as? [Any] else { return }
-        let now = Date()
-        for item in array {
-            guard let object = item as? [String: Any], string(object["state"]) == "active" else { continue }
-            let expires = string(object["expiresAt"])
-            if !expires.isEmpty {
-                guard let until = ISO8601DateFormatter().date(from: expires), until > now else { continue }
+    private static func parseHouses(_ html: String) -> [HouseStatus] {
+        let pattern = #"<div class="house([^"]*)"\s+data-g="([^"]*)"\s+data-st="([^"]*)"\s+data-q="[^"]*">(.*?)</div>"#
+        return captures(pattern, in: html, dotAll: true).compactMap { match in
+            let group = match[2]
+            guard queueId.matches(group) else { return nil }
+            let body = match[4]
+            let address = unescape(first(body, #"<span class="addr"><b>(.*?)</b>"#) ?? "")
+            guard !address.isEmpty else { return nil }
+            let complex = first(body, #"<small class="complex-tag">(.*?)</small>"#).map(unescape)?.nilIfBlank
+            let since = first(body, #"title="([^"]*з [^"]+)""#).map(unescape)
+            return HouseStatus(
+                group: group,
+                powerOn: match[3] == "on",
+                address: address,
+                complex: complex,
+                since: since
+            )
+        }
+    }
+
+    private struct TextRun {
+        var x: Double
+        var y: Double
+        var body: String
+    }
+
+    private struct Bar {
+        var x: Double
+        var width: Double
+        var centerY: Double
+    }
+
+    private struct Track {
+        var origin: Double
+        var width: Double
+    }
+
+    private static func texts(_ svg: String) -> [TextRun] {
+        captures(#"<text\b([^>]*)>(.*?)</text>"#, in: svg, dotAll: true).compactMap { match in
+            let values = attributes(match[1])
+            guard let x = Double(values["x"] ?? ""), let y = Double(values["y"] ?? "") else { return nil }
+            let body = unescape(match[2].replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)).trimmingCharacters(in: .whitespacesAndNewlines)
+            return body.isEmpty ? nil : TextRun(x: x, y: y, body: body)
+        }
+    }
+
+    private static func offRects(_ svg: String) -> [Bar] {
+        captures(#"<rect\b([^>]*)/?>"#, in: svg).compactMap { match in
+            let values = attributes(match[1])
+            guard values["fill"]?.range(of: "CBCAC5", options: .caseInsensitive) != nil,
+                  let x = Double(values["x"] ?? ""),
+                  let y = Double(values["y"] ?? ""),
+                  let width = Double(values["width"] ?? ""),
+                  let height = Double(values["height"] ?? ""),
+                  height >= 20, height <= 60 else { return nil }
+            return Bar(x: x, width: width, centerY: y + height / 2)
+        }
+    }
+
+    private static func track(_ svg: String) -> Track? {
+        for match in captures(#"<rect\b([^>]*)/?>"#, in: svg) {
+            let values = attributes(match[1])
+            guard let x = Double(values["x"] ?? ""), let width = Double(values["width"] ?? "") else { continue }
+            if x >= 180 && x <= 280 && width >= 1000 && width <= 1300 { return Track(origin: x, width: width) }
+        }
+        return nil
+    }
+
+    private static func minuteAt(_ x: Double, _ track: Track) -> Int {
+        let raw = (x - track.origin) / track.width * 1440
+        let snapped = Int((raw / 30).rounded()) * 30
+        return min(1440, max(0, snapped))
+    }
+
+    private static func merge(_ segments: [(Double, Double)]) -> [(Double, Double)] {
+        var merged: [(Double, Double)] = []
+        for (start, end) in segments {
+            if let last = merged.last, start <= last.1 + 3 {
+                merged[merged.count - 1] = (last.0, max(last.1, end))
+            } else {
+                merged.append((start, end))
             }
-            let message = string(object["message"]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !message.isEmpty { messages.append(message) }
         }
+        return merged
     }
 
-    private static func dedupe(_ messages: [String]) -> String {
-        var unique: [String] = []
-        for message in messages where !unique.contains(message) {
-            unique.append(message)
-        }
-        return unique
-            .filter { message in !unique.contains { $0 != message && $0.contains(message) } }
-            .joined(separator: "\n\n")
+    private static func updatedDate(_ body: String) -> String? {
+        first(body, #"Оновлено\s+(\d{2}\.\d{2}\.\d{4})"#)
     }
 
-    private static func daySchedule(
-        _ day: String,
-        _ iso: String,
-        _ groups: [String: [Outage]],
-        _ updated: [String: String]
-    ) -> DaySchedule? {
+    private static func chartDate(_ runs: [TextRun], stamp: String) -> Date? {
+        guard let phrase = runs.first(where: { run in months.keys.contains { run.body.lowercased().contains($0) } })?.body,
+              let match = captures(#"(\d{1,2})\s+([а-яіїєґА-ЯІЇЄҐ]+)"#, in: phrase).first,
+              let day = Int(match[1]),
+              let month = months[match[2].lowercased(with: Locale(identifier: "uk"))],
+              let stampDate = parseDay(stamp) else { return nil }
+        var parts = Calendar(identifier: .gregorian).dateComponents([.year], from: stampDate)
+        parts.month = month
+        parts.day = day
+        parts.calendar = ScheduleMath.calendar()
+        parts.timeZone = ScheduleMath.zone
+        guard let candidate = ScheduleMath.calendar().date(from: parts) else { return nil }
+        let limit = ScheduleMath.calendar().date(byAdding: .day, value: -1, to: stampDate) ?? stampDate
+        if candidate < limit {
+            return ScheduleMath.calendar().date(byAdding: .year, value: 1, to: candidate)
+        }
+        return candidate
+    }
+
+    private static func parseDay(_ value: String) -> Date? {
         let formatter = DateFormatter()
         formatter.calendar = ScheduleMath.calendar()
         formatter.timeZone = ScheduleMath.zone
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        guard let date = formatter.date(from: iso) else { return nil }
-        let label = DateFormatter()
-        label.calendar = ScheduleMath.calendar()
-        label.timeZone = ScheduleMath.zone
-        label.locale = Locale(identifier: "ru_RU")
-        label.dateFormat = "d MMMM"
-        let dayDate = DateFormatter()
-        dayDate.calendar = ScheduleMath.calendar()
-        dayDate.timeZone = ScheduleMath.zone
-        dayDate.locale = Locale(identifier: "en_US_POSIX")
-        dayDate.dateFormat = "dd.MM.yyyy"
-        return DaySchedule(
-            day: day,
-            label: label.string(from: date),
-            updatedDate: dayDate.string(from: date),
-            updatedTime: "",
-            groups: groups,
-            groupUpdated: updated
-        )
+        formatter.dateFormat = "dd.MM.yyyy"
+        return formatter.date(from: value)
     }
 
-    private static func formatStamp(_ iso: String) -> String? {
-        guard let instant = ISO8601DateFormatter.fractional.date(from: iso) ?? ISO8601DateFormatter().date(from: iso) else {
-            return nil
-        }
-        let day = DateFormatter()
-        day.calendar = ScheduleMath.calendar()
-        day.timeZone = ScheduleMath.zone
-        day.locale = Locale(identifier: "en_US_POSIX")
-        day.dateFormat = "dd.MM.yyyy"
-        let clock = DateFormatter()
-        clock.calendar = ScheduleMath.calendar()
-        clock.timeZone = ScheduleMath.zone
-        clock.locale = Locale(identifier: "en_US_POSIX")
-        clock.dateFormat = "HH:mm"
-        return "\(day.string(from: instant)) \(clock.string(from: instant))"
+    private static func format(_ date: Date, _ pattern: String, _ locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = ScheduleMath.calendar()
+        formatter.timeZone = ScheduleMath.zone
+        formatter.locale = locale
+        formatter.dateFormat = pattern
+        return formatter.string(from: date)
     }
 
-    private static func extractRows(_ html: String) -> [Any]? {
-        guard let idAt = html.range(of: "id=\"ng-state\"") else { return nil }
-        let head = html[..<idAt.lowerBound]
-        guard head.range(of: "<script", options: .backwards) != nil else { return nil }
-        guard let jsonStart = html.range(of: ">", range: idAt.upperBound..<html.endIndex),
-              let jsonEnd = html.range(of: "</script>", range: jsonStart.upperBound..<html.endIndex) else { return nil }
-        var body = String(html[jsonStart.upperBound..<jsonEnd.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !body.hasPrefix("{") {
-            body = body
-                .replacingOccurrences(of: "&amp;", with: "&")
-                .replacingOccurrences(of: "&quot;", with: "\"")
-                .replacingOccurrences(of: "&#34;", with: "\"")
-                .replacingOccurrences(of: "&lt;", with: "<")
-                .replacingOccurrences(of: "&gt;", with: ">")
+    private static func attributes(_ source: String) -> [String: String] {
+        var result: [String: String] = [:]
+        for match in captures(#"([\w:-]+)="([^"]*)""#, in: source) {
+            result[match[1]] = match[2]
         }
-        guard let data = body.data(using: .utf8),
-              let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let payload = state[stateKey] as? [String: Any],
-              let rows = payload["data"] as? [Any] else { return nil }
-        return rows
+        return result
+    }
+
+    private static func first(_ text: String, _ pattern: String) -> String? {
+        captures(pattern, in: text, dotAll: true).first?.dropFirst().first
+    }
+
+    private static func captures(_ pattern: String, in text: String, dotAll: Bool = false) -> [[String]] {
+        let options: NSRegularExpression.Options = dotAll ? [.dotMatchesLineSeparators] : []
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: options) else { return [] }
+        let range = NSRange(text.startIndex..., in: text)
+        return expression.matches(in: text, range: range).map { match in
+            (0..<match.numberOfRanges).map { index in
+                guard let piece = Range(match.range(at: index), in: text) else { return "" }
+                return String(text[piece])
+            }
+        }
+    }
+
+    private static func unescape(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#34;", with: "\"")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func emptyPage() -> ParsedPage {
         ParsedPage(days: [], live: [], houses: [], tomorrowMissing: true, note: "")
     }
+}
 
-    private static func string(_ value: Any?) -> String {
-        if let text = value as? String { return text }
-        if let number = value as? NSNumber { return number.stringValue }
-        return ""
+private extension NSRegularExpression {
+    func matches(_ value: String) -> Bool {
+        let range = NSRange(value.startIndex..., in: value)
+        return firstMatch(in: value, range: range) != nil
     }
 }
 
-private extension ISO8601DateFormatter {
-    static let fractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+private extension String {
+    var nilIfBlank: String? { isEmpty ? nil : self }
 }

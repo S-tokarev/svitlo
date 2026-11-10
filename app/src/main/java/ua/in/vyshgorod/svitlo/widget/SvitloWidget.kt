@@ -65,7 +65,7 @@ class SvitloWidget : AppWidgetProvider() {
                 views.setTextViewText(R.id.widget_kicker, "Светло")
                 views.setTextViewText(R.id.widget_status, "Выберите группу")
                 views.setTextViewText(R.id.widget_next, "Откройте приложение")
-                views.setTextViewText(R.id.widget_updated, "График ДТЕК · alerts.energy")
+                views.setTextViewText(R.id.widget_updated, "vyshgorod.in.ua/svitlo")
             } else {
                 val now = System.currentTimeMillis()
                 val picture = ScheduleMath.picture(snapshot, selection, now)
