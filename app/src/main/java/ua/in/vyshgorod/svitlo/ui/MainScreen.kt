@@ -467,6 +467,10 @@ private fun nextHint(picture: PowerPicture?, now: Long): NextHint {
             "По графику включат в ${ScheduleMath.formatDayTime(back, now)}",
             "через ${ScheduleMath.formatDuration(back - now)}",
         )
+        on == false && picture.offUntil != null -> NextHint(
+            "Света нет до конца дня, до 24:00",
+            "через ${ScheduleMath.formatDuration(picture.offUntil - now)}",
+        )
         on == false -> NextHint("Когда включат, на графике не сказано", null)
         else -> NextHint("Не удалось понять статус этой группы", null)
     }

@@ -84,6 +84,7 @@ struct PowerPicture: Equatable {
     var houseOn: Bool?
     var nextOffAt: Int64?
     var nextOnAt: Int64?
+    var offUntil: Int64?
     var dueWarnOffAt: Int64?
     var warnAts: [Int64]
     var appearAts: [Int64]

@@ -79,7 +79,8 @@ enum ScheduleMath {
             }
         }
         let tomorrowKnown = tomorrowSchedule?.groups[group] != nil && (publishedToday || publishedYesterday)
-        if let boundary = nextOn, isDayBoundary(boundary), !tomorrowKnown { nextOn = nil }
+        let offUntil = nextOn.flatMap { isDayBoundary($0) && !tomorrowKnown ? $0 : nil }
+        if offUntil != nil { nextOn = nil }
 
         let house = findHouse(snapshot.houses, selection)
         let displayOn: Bool? = {
@@ -117,6 +118,7 @@ enum ScheduleMath {
             houseOn: house?.powerOn,
             nextOffAt: nextOff.flatMap { $0 > now ? $0 : nil },
             nextOnAt: nextOn.flatMap { $0 > now ? $0 : nil },
+            offUntil: offUntil.flatMap { $0 > now ? $0 : nil },
             dueWarnOffAt: nextOff.flatMap { $0 > now && $0 - now <= warnBeforeMs ? $0 : nil },
             warnAts: offMoments.map { $0 - warnBeforeMs }.filter { $0 > now + 5_000 }.sorted(),
             appearAts: onMoments.sorted(),

@@ -14,6 +14,8 @@ data class PowerPicture(
     val houseOn: Boolean?,
     val nextOffAt: Long?,
     val nextOnAt: Long?,
+    /** Outage reaches midnight and tomorrow's chart is not published yet. Not a confirmed switch-on. */
+    val offUntil: Long? = null,
     /** Off moment we are already inside the 10-minute warning window for. */
     val dueWarnOffAt: Long?,
     val warnAts: List<Long>,
@@ -107,7 +109,8 @@ object ScheduleMath {
             }
         }
         val tomorrowKnown = tomorrowSchedule?.groups?.containsKey(group) == true && (publishedToday || publishedYesterday)
-        if (nextOn != null && isDayBoundary(nextOn) && !tomorrowKnown) nextOn = null
+        val offUntil = if (nextOn != null && isDayBoundary(nextOn) && !tomorrowKnown) nextOn else null
+        if (offUntil != null) nextOn = null
 
         val house = findHouse(snapshot.houses, selection)
         val displayOn = when {
@@ -146,6 +149,7 @@ object ScheduleMath {
             houseOn = house?.powerOn,
             nextOffAt = nextOff?.takeIf { it > now },
             nextOnAt = nextOn?.takeIf { it > now },
+            offUntil = offUntil?.takeIf { it > now },
             dueWarnOffAt = nextOff?.takeIf { it > now && it - now <= WARN_BEFORE_MS },
             warnAts = offMoments.map { it - WARN_BEFORE_MS }.filter { it > now + 5_000L }.sorted(),
             appearAts = onMoments.sorted(),

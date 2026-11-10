@@ -70,7 +70,14 @@ final class LogicTests: XCTestCase {
         let cutoff = snapshot(now, days: [
             DaySchedule(day: "today", label: "9 ноября", updatedDate: "09.11.2026", updatedTime: "", groups: ["2.1": [Outage(startMin: 1230, endMin: 1440)]], groupUpdated: [:]),
         ])
-        XCTAssertNil(ScheduleMath.picture(snapshot: cutoff, selection: Selection(group: "2.1"), now: now).nextOnAt)
+        let cutoffPicture = ScheduleMath.picture(snapshot: cutoff, selection: Selection(group: "2.1"), now: now)
+        XCTAssertNil(cutoffPicture.nextOnAt)
+        let until = cutoffPicture.offUntil ?? -1
+        let untilParts = ScheduleMath.calendar().dateComponents([.day, .hour, .minute], from: ScheduleMath.date(from: until))
+        XCTAssertEqual(untilParts.day, 10)
+        XCTAssertEqual(untilParts.hour, 0)
+        XCTAssertEqual(untilParts.minute, 0)
+        XCTAssertNil(ScheduleMath.picture(snapshot: continued, selection: Selection(group: "2.1"), now: now).offUntil)
     }
 
     func testScheduleChangeIgnoresAFinishedDay() {

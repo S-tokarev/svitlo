@@ -80,6 +80,8 @@ struct Provider: TimelineProvider {
             let next: String
             if let on = picture.nextOnAt {
                 next = "По графику включат в \(ScheduleMath.formatDayTime(on, now: now)) · через \(ScheduleMath.formatDuration(on - now))"
+            } else if let until = picture.offUntil {
+                next = "Света нет до 24:00 · через \(ScheduleMath.formatDuration(until - now))"
             } else {
                 next = "Время включения неизвестно"
             }

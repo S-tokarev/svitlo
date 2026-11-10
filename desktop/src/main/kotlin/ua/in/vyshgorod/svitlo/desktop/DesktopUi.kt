@@ -402,6 +402,8 @@ private fun nextHint(picture: PowerPicture?, now: Long): Pair<String, String?> {
         on == true -> "Ближайших отключений по графику нет" to null
         on == false && back != null -> "По графику включат в ${ScheduleMath.formatDayTime(back, now)}" to
             "через ${ScheduleMath.formatDuration(back - now)}"
+        on == false && picture.offUntil != null -> "Света нет до конца дня, до 24:00" to
+            "через ${ScheduleMath.formatDuration(picture.offUntil - now)}"
         on == false -> "Когда включат, на графике не сказано" to null
         else -> "Не удалось понять статус этой группы" to null
     }

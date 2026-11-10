@@ -110,7 +110,14 @@ class SvitloParserTest {
             now,
             DaySchedule("today", "9 ноября", "09.11.2026", "", mapOf("2.1" to listOf(Outage(1230, 1440)))),
         )
-        assertNull(ScheduleMath.picture(cutoff, Selection(group = "2.1"), now).nextOnAt)
+        val cutoffPicture = ScheduleMath.picture(cutoff, Selection(group = "2.1"), now)
+        assertNull(cutoffPicture.nextOnAt)
+        val until = cutoffPicture.offUntil ?: error("missing end of day")
+        val untilTime = java.time.Instant.ofEpochMilli(until).atZone(zone)
+        assertEquals(10, untilTime.dayOfMonth)
+        assertEquals(0, untilTime.hour)
+        assertEquals(0, untilTime.minute)
+        assertNull(ScheduleMath.picture(continued, Selection(group = "2.1"), now).offUntil)
     }
 
     @Test

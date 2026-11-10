@@ -98,10 +98,14 @@ class SvitloWidget : AppWidgetProvider() {
                         paint(views, R.drawable.widget_bg_off, 0xFFA33E2C.toInt(), 0xFF3C120C.toInt(), 0xFF7A463C.toInt())
                         views.setTextViewText(R.id.widget_status, "Света нет")
                         val on = picture.nextOnAt
+                        val until = picture.offUntil
                         views.setTextViewText(
                             R.id.widget_next,
-                            if (on == null) "Время включения неизвестно"
-                            else "По графику включат в ${ScheduleMath.formatDayTime(on, now)} · через ${ScheduleMath.formatDuration(on - now)}",
+                            when {
+                                on != null -> "По графику включат в ${ScheduleMath.formatDayTime(on, now)} · через ${ScheduleMath.formatDuration(on - now)}"
+                                until != null -> "Света нет до 24:00 · через ${ScheduleMath.formatDuration(until - now)}"
+                                else -> "Время включения неизвестно"
+                            },
                         )
                     }
                     null -> {

@@ -251,6 +251,9 @@ private func nextHint(_ picture: PowerPicture?, _ now: Int64) -> Hint {
     if picture.displayOn == false, let back = picture.nextOnAt {
         return Hint(whenText: "По графику включат в \(ScheduleMath.formatDayTime(back, now: now))", duration: "через \(ScheduleMath.formatDuration(back - now))")
     }
+    if picture.displayOn == false, let until = picture.offUntil {
+        return Hint(whenText: "Света нет до конца дня, до 24:00", duration: "через \(ScheduleMath.formatDuration(until - now))")
+    }
     if picture.displayOn == false { return Hint(whenText: "Когда включат, на графике не сказано", duration: nil) }
     return Hint(whenText: "Не удалось понять статус этой группы", duration: nil)
 }
