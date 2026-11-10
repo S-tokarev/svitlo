@@ -192,14 +192,14 @@ final class LogicTests: XCTestCase {
             #"<text x="1360" y="64">23:45</text>"#,
             #"<text x="277" y="73">\#(phrase)</text>"#,
         ]
-        var rects = [#"<rect x="230" y="120" width="1118" height="40" fill="#FFFFFF"/>"#]
+        var rects = [##"<rect x="230" y="120" width="1118" height="40" fill="#FFFFFF"/>"##]
         for (index, row) in rows.enumerated() {
             let labelY = 170.0 + Double(index) * 48
             texts.append(#"<text x="92" y="\#(labelY)">\#(row.0)</text>"#)
             for outage in row.1 {
                 let x = 230.0 + Double(outage.startMin) / 1440.0 * 1118.0
                 let width = Double(outage.endMin - outage.startMin) / 1440.0 * 1118.0
-                rects.append(#"<rect x="\#(x)" y="\#(labelY - 28)" width="\#(width)" height="45" fill="#CBCAC5"/>"#)
+                rects.append(##"<rect x="\##(x)" y="\##(labelY - 28)" width="\##(width)" height="45" fill="#CBCAC5"/>"##)
             }
         }
         return #"<div class="sg-svg sg-svg-light"><svg>\#(rects.joined())\#(texts.joined())</svg></div>"#
