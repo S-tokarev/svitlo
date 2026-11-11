@@ -34,7 +34,7 @@ enum ScheduleRefresh {
     static func run() async throws {
         let html = try await SvitloClient.fetchPage()
         let parsed = SvitloParser.parse(html: html)
-        guard !parsed.days.isEmpty else { throw SvitloError.message("Сайт отдал страницу без графика") }
+        guard !parsed.days.isEmpty else { throw SvitloError.message(Copy.emptySchedule()) }
         let previous = AppStore.loadSnapshot()
         let snapshot = Snapshot(
             fetchedAt: ScheduleMath.millis(Date()),
@@ -153,7 +153,7 @@ final class AppModel: ObservableObject {
                     houseQuery: AddressMatch.houseFilter(query)
                 )
                 results = lookup.hits
-                searchError = lookup.hint ?? (lookup.hits.isEmpty ? "ДТЕК не указал группу для этой улицы" : nil)
+                searchError = lookup.hint ?? (lookup.hits.isEmpty ? Copy.streetHasNoGroup() : nil)
             } catch {
                 searchError = error.localizedDescription
             }
@@ -172,7 +172,7 @@ final class AppModel: ObservableObject {
     func search() async {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard text.count >= 2 else {
-            searchError = "Введите хотя бы 2 буквы"
+            searchError = Copy.typeTwoLetters()
             return
         }
         searching = true
@@ -180,7 +180,7 @@ final class AppModel: ObservableObject {
         do {
             let lookup = try await AddressDirectory.shared.search(text)
             results = lookup.hits
-            searchError = lookup.hint ?? (lookup.hits.isEmpty ? "Ничего не найдено" : nil)
+            searchError = lookup.hint ?? (lookup.hits.isEmpty ? Copy.nothingFound() : nil)
         } catch {
             searchError = error.localizedDescription
         }

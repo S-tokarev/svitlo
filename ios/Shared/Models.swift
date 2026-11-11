@@ -103,9 +103,9 @@ enum ThemeMode: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .system: return "Система"
-        case .light: return "Светлая"
-        case .dark: return "Тёмная"
+        case .system: return Copy.themeSystem()
+        case .light: return Copy.themeLight()
+        case .dark: return Copy.themeDark()
         }
     }
 }

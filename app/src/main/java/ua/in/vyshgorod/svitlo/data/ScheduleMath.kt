@@ -53,17 +53,15 @@ object ScheduleMath {
 
     private val dateFormat = DateTimeFormatter.ofPattern("dd.MM.yyyy")
     private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
-    private val ruMonths = arrayOf(
-        "января", "февраля", "марта", "апреля", "мая", "июня",
-        "июля", "августа", "сентября", "октября", "ноября", "декабря",
-    )
 
-    /** Day title such as "10 ноября". Month names are fixed so a desktop runtime without Russian locale data cannot print "Nov". */
-    fun dayLabel(date: LocalDate): String = "${date.dayOfMonth} ${ruMonths[date.monthValue - 1]}"
+    /** Day title such as "10 листопада". Month names are fixed so a runtime without locale data cannot print "Nov". */
+    fun dayLabel(date: LocalDate, language: AppLanguage = L10n.language): String {
+        return "${date.dayOfMonth} ${L10n.month(date.monthValue, language)}"
+    }
 
-    fun dayLabel(updatedDate: String): String {
+    fun dayLabel(updatedDate: String, language: AppLanguage = L10n.language): String {
         val date = parseDate(updatedDate) ?: return ""
-        return dayLabel(date)
+        return dayLabel(date, language)
     }
 
     fun picture(snapshot: Snapshot, selection: Selection, now: Long): PowerPicture {
@@ -190,7 +188,7 @@ object ScheduleMath {
         val clockText = whenZ.format(timeFormat)
         return when (whenZ.toLocalDate()) {
             nowZ.toLocalDate() -> clockText
-            nowZ.toLocalDate().plusDays(1) -> "завтра $clockText"
+            nowZ.toLocalDate().plusDays(1) -> L10n.tomorrowAt(clockText)
             else -> "${whenZ.dayOfMonth}.${whenZ.monthValue.toString().padStart(2, '0')} $clockText"
         }
     }
@@ -199,11 +197,7 @@ object ScheduleMath {
         val totalMin = (ms / 60_000L).toInt().coerceAtLeast(0)
         val hours = totalMin / 60
         val minutes = totalMin % 60
-        return when {
-            hours > 0 && minutes > 0 -> "$hours ч $minutes мин"
-            hours > 0 -> "$hours ч"
-            else -> "$minutes мин"
-        }
+        return L10n.duration(hours, minutes)
     }
 
     fun formatClock(minutes: Int): String {

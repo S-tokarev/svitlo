@@ -53,49 +53,49 @@ struct Provider: TimelineProvider {
             return WidgetEntry(
                 date: date, background: Color(hex: 0x22201C), statusColor: Color(hex: 0xF6F1E7),
                 ink: Color(hex: 0xF6F1E7), muted: Color(hex: 0xB6AB9C),
-                kicker: "График света", status: "Выберите группу", next: "Откройте приложение",
+                kicker: Copy.appTitle(), status: Copy.chooseGroup(), next: Copy.openApp(),
                 footer: "vyshgorod.in.ua/svitlo", slices: [], nowMin: nil
             )
         }
         let now = ScheduleMath.millis(date)
         let picture = ScheduleMath.picture(snapshot: snapshot, selection: selection, now: now)
         let place = selection.placeLabel
-        let kicker = place ?? "Группа \(selection.group)"
-        let footer = "Группа \(selection.group) · обновлено \(ScheduleMath.formatDayTime(snapshot.fetchedAt, now: now))"
+        let kicker = place ?? Copy.groupTitle(selection.group)
+        let footer = Copy.widgetFooter(selection.group, ScheduleMath.formatDayTime(snapshot.fetchedAt, now: now))
         switch picture.displayOn {
         case true:
             let next: String
             if let off = picture.nextOffAt {
-                next = "По графику выключат в \(ScheduleMath.formatDayTime(off, now: now)) · через \(ScheduleMath.formatDuration(off - now))"
+                next = Copy.offAtIn(ScheduleMath.formatDayTime(off, now: now), ScheduleMath.formatDuration(off - now))
             } else {
-                next = "Отключений по графику нет"
+                next = Copy.noUpcomingOutage()
             }
             return WidgetEntry(
                 date: date, background: Color(hex: 0xD7F6E4), statusColor: Color(hex: 0x0F6B38),
                 ink: Color(hex: 0x143024), muted: Color(hex: 0x3D6B52),
-                kicker: kicker, status: "Свет есть", next: next, footer: footer,
+                kicker: kicker, status: Copy.powerOn(), next: next, footer: footer,
                 slices: scaleSlices(picture.outagesToday), nowMin: ScheduleMath.minuteOfDay(now)
             )
         case false:
             let next: String
             if let on = picture.nextOnAt {
-                next = "По графику включат в \(ScheduleMath.formatDayTime(on, now: now)) · через \(ScheduleMath.formatDuration(on - now))"
+                next = Copy.onAtIn(ScheduleMath.formatDayTime(on, now: now), ScheduleMath.formatDuration(on - now))
             } else if let until = picture.offUntil {
-                next = "Света нет до 24:00 · через \(ScheduleMath.formatDuration(until - now))"
+                next = Copy.offUntil(ScheduleMath.formatDuration(until - now))
             } else {
-                next = "Время включения неизвестно"
+                next = Copy.unknownOnTime()
             }
             return WidgetEntry(
                 date: date, background: Color(hex: 0xF8D5CC), statusColor: Color(hex: 0xA33E2C),
                 ink: Color(hex: 0x3C120C), muted: Color(hex: 0x7A463C),
-                kicker: kicker, status: "Света нет", next: next, footer: footer,
+                kicker: kicker, status: Copy.powerOff(), next: next, footer: footer,
                 slices: scaleSlices(picture.outagesToday), nowMin: ScheduleMath.minuteOfDay(now)
             )
         default:
             return WidgetEntry(
                 date: date, background: Color(hex: 0x22201C), statusColor: Color(hex: 0xF6F1E7),
                 ink: Color(hex: 0xF6F1E7), muted: Color(hex: 0xB6AB9C),
-                kicker: kicker, status: "Нет данных", next: "Обновите график в приложении", footer: footer,
+                kicker: kicker, status: Copy.noData(), next: Copy.refreshInApp(), footer: footer,
                 slices: [], nowMin: nil
             )
         }
@@ -160,8 +160,8 @@ struct SvitloWidget: Widget {
         StaticConfiguration(kind: "svitlo", provider: Provider()) { entry in
             SvitloWidgetView(entry: entry)
         }
-        .configurationDisplayName("График света")
-        .description("Статус света выбранной группы по графику ДТЕК")
+        .configurationDisplayName("Графік світла")
+        .description("Стан світла обраної групи за графіком ДТЕК")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }

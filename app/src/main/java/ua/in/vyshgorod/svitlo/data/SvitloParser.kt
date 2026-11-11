@@ -96,7 +96,7 @@ object SvitloParser {
         if (groups.isEmpty()) return null
         return DaySchedule(
             day = day,
-            label = ScheduleMath.dayLabel(date),
+            label = ScheduleMath.dayLabel(date, AppLanguage.Uk),
             updatedDate = date.format(dayDate),
             updatedTime = "",
             groups = groups,

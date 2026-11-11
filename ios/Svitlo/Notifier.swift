@@ -16,8 +16,8 @@ enum Notifier {
         let now = ScheduleMath.millis(Date())
         if AppStore.quietNight(), ScheduleMath.isQuietHour(now) { return }
         let content = UNMutableNotificationContent()
-        content.title = "График изменился"
-        content.body = details(selection.group, selection.placeLabel, "расписание на сайте обновили")
+        content.title = Copy.scheduleChanged()
+        content.body = Copy.notice(selection.group, selection.placeLabel, Copy.scheduleChangedTail())
         content.sound = .default
         let center = UNUserNotificationCenter.current()
         center.add(UNNotificationRequest(identifier: "plan-\(now)", content: content, trigger: nil))
@@ -42,8 +42,8 @@ enum Notifier {
                     guard !quiet || !ScheduleMath.isQuietHour(fireAt) else { continue }
                     let offAt = fireAt + ScheduleMath.warnBeforeMs
                     let content = UNMutableNotificationContent()
-                    content.title = "Свет выключат через 10 мин"
-                    content.body = details(selection.group, place, "по графику отключение в \(ScheduleMath.formatDayTime(offAt, now: fireAt))")
+                    content.title = Copy.warnTitle(10)
+                    content.body = Copy.notice(selection.group, place, Copy.offDetail(ScheduleMath.formatDayTime(offAt, now: fireAt)))
                     content.sound = .default
                     schedule(center, id: "warn-\(selection.placeKey)-\(offAt)", at: fireAt, content: content)
                 }
@@ -52,20 +52,13 @@ enum Notifier {
                 for onAt in picture.appearAts.prefix(8) {
                     guard !quiet || !ScheduleMath.isQuietHour(onAt) else { continue }
                     let content = UNMutableNotificationContent()
-                    content.title = "По графику свет включили"
-                    content.body = details(selection.group, place, "по графику свет есть")
+                    content.title = Copy.powerReturned()
+                    content.body = Copy.notice(selection.group, place, Copy.powerOnTail())
                     content.sound = .default
                     schedule(center, id: "on-\(selection.placeKey)-\(onAt)", at: onAt, content: content)
                 }
             }
         }
-    }
-
-    private static func details(_ group: String, _ place: String?, _ tail: String) -> String {
-        var text = "Группа \(group)"
-        if let place, !place.isEmpty { text += " · \(place)" }
-        text += " · \(tail)"
-        return text
     }
 
     private static func schedule(_ center: UNUserNotificationCenter, id: String, at epochMs: Int64, content: UNNotificationContent) {

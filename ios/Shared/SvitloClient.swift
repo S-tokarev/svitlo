@@ -18,9 +18,9 @@ enum SvitloClient {
         request.setValue("uk,ru;q=0.9", forHTTPHeaderField: "Accept-Language")
         let (data, response) = try await URLSession.shared.data(for: request)
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200...299).contains(code) else { throw SvitloError.message("Сайт ответил \(code)") }
+        guard (200...299).contains(code) else { throw SvitloError.message(Copy.siteAnswered(code)) }
         guard let body = String(data: data, encoding: .utf8), !body.isEmpty else {
-            throw SvitloError.message("Сайт отдал пустую страницу")
+            throw SvitloError.message(Copy.emptyPage())
         }
         return body
     }

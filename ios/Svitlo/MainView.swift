@@ -24,7 +24,7 @@ struct MainView: View {
                 address
                 appearance
                 notifications
-                Button("График на сайте") { openURL(SvitloClient.page(for: model.selection.group)) }
+                Button(Copy.openScheduleShort()) { openURL(SvitloClient.page(for: model.selection.group)) }
                     .font(.subheadline)
                     .foregroundStyle(palette.accent)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -39,12 +39,12 @@ struct MainView: View {
 
     private var header: some View {
         HStack(alignment: .center) {
-            Text("График света")
+            Text(Copy.appTitle())
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(palette.ink)
             Spacer()
             if model.loading { ProgressView().tint(palette.accent) }
-            Button(model.loading ? "Обновляем…" : "Обновить") { Task { await model.refresh() } }
+            Button(model.loading ? Copy.refreshing() : Copy.refresh()) { Task { await model.refresh() } }
                 .buttonStyle(.borderedProminent)
                 .tint(palette.accent)
                 .disabled(model.loading)
@@ -55,7 +55,7 @@ struct MainView: View {
         let hint = nextHint(picture, nowMs)
         let on = picture?.displayOn
         let color = on == true ? palette.powerOnText : on == false ? palette.powerOffText : palette.ink
-        let title = on == true ? "Свет есть" : on == false ? "Света нет" : (model.selection.group.isEmpty ? "Выберите группу" : "Нет данных")
+        let title = on == true ? Copy.powerOn() : on == false ? Copy.powerOff() : (model.selection.group.isEmpty ? Copy.chooseGroup() : Copy.noData())
         return card {
             Text(heading)
                 .font(.caption)
@@ -72,7 +72,7 @@ struct MainView: View {
                     .foregroundStyle(color)
             }
             if let fetched = model.snapshot?.fetchedAt, fetched > 0 {
-                Text("Обновлено \(ScheduleMath.formatDayTime(fetched, now: nowMs))")
+                Text(Copy.updated(ScheduleMath.formatDayTime(fetched, now: nowMs)))
                     .font(.caption)
                     .foregroundStyle(palette.muted)
             }
@@ -80,31 +80,29 @@ struct MainView: View {
     }
 
     private var heading: String {
-        if let place = model.selection.placeLabel { return "\(place) · группа \(model.selection.group)" }
-        if model.selection.group.isEmpty { return "Группа не выбрана" }
-        return "Группа \(model.selection.group)"
+        Copy.placeHeading(model.selection.placeLabel, model.selection.group)
     }
 
     @ViewBuilder private var schedule: some View {
         if let picture, !picture.outagesToday.isEmpty || picture.plannedOn != nil {
             DayTrack(
-                title: picture.scheduleLabel.isEmpty ? "Сегодня" : picture.scheduleLabel,
+                title: picture.scheduleLabel.isEmpty ? Copy.today() : picture.scheduleLabel,
                 outages: picture.outagesToday,
                 nowMin: ScheduleMath.minuteOfDay(nowMs),
                 palette: palette
             )
         }
         if let picture, !picture.outagesTomorrow.isEmpty {
-            DayTrack(title: "Завтра", outages: picture.outagesTomorrow, nowMin: nil, palette: palette)
+            DayTrack(title: Copy.tomorrow(), outages: picture.outagesTomorrow, nowMin: nil, palette: palette)
         } else if let snapshot = model.snapshot, ScheduleMath.groupHasTomorrow(snapshot: snapshot, group: model.selection.group) {
-            DayTrack(title: "Завтра", outages: [], nowMin: nil, palette: palette)
+            DayTrack(title: Copy.tomorrow(), outages: [], nowMin: nil, palette: palette)
         }
     }
 
     private var groups: some View {
         let items = ScheduleMath.knownGroups(model.snapshot)
         return card {
-            Text("Группа").font(.headline).foregroundStyle(palette.ink)
+            Text(Copy.groupSection()).font(.headline).foregroundStyle(palette.ink)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(items, id: \.self) { group in
                     let selected = group == model.selection.group
@@ -122,8 +120,8 @@ struct MainView: View {
 
     private var address: some View {
         card {
-            Text("Адреса").font(.headline).foregroundStyle(palette.ink)
-            Text("Можно сохранить несколько. Адрес выбирает группу.")
+            Text(Copy.addresses()).font(.headline).foregroundStyle(palette.ink)
+            Text(Copy.addressesHint())
                 .font(.caption)
                 .foregroundStyle(palette.muted)
             ForEach(model.places, id: \.placeKey) { place in
@@ -134,28 +132,28 @@ struct MainView: View {
                         model.focusPlace(place)
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(place.placeLabel ?? "Группа \(place.group)")
+                            Text(place.placeLabel ?? Copy.groupTitle(place.group))
                                 .foregroundStyle(palette.ink)
-                            Text("группа \(place.group) · \(on == true ? "свет есть" : on == false ? "света нет" : "нет данных")")
+                            Text(Copy.savedPlaceStatus(place.group, on))
                                 .font(.caption)
                                 .foregroundStyle(on == true ? palette.powerOnText : on == false ? palette.powerOffText : palette.muted)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Button("Убрать") { model.removePlace(place) }
+                    Button(Copy.remove()) { model.removePlace(place) }
                         .font(.caption)
                         .foregroundStyle(palette.muted)
                 }
                 .padding(8)
                 .background(selected ? palette.card2 : Color.clear, in: RoundedRectangle(cornerRadius: 12))
             }
-            TextField("Улица и дом, например Буча Шевченка 11", text: $model.query)
+            TextField(Copy.addressHint(), text: $model.query)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding(12)
                 .background(palette.field, in: RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(palette.line))
-            Button(model.searching ? "Ищем…" : "Найти группу") { Task { await model.search() } }
+            Button(model.searching ? Copy.searching() : Copy.search()) { Task { await model.search() } }
                 .buttonStyle(.bordered)
                 .disabled(model.searching)
             if let searchError = model.searchError {
@@ -165,7 +163,7 @@ struct MainView: View {
                 Button {
                     Task { await model.pick(hit) }
                 } label: {
-                    Text(hit.group.isEmpty ? "\(hit.city), \(hit.street)" : "\(hit.label)  ·  группа \(hit.group)")
+                    Text(Copy.addressHit(hit.label, hit.group))
                         .font(.subheadline)
                         .foregroundStyle(palette.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -178,7 +176,7 @@ struct MainView: View {
 
     private var appearance: some View {
         card {
-            Text("Оформление").font(.headline).foregroundStyle(palette.ink)
+            Text(Copy.appearance()).font(.headline).foregroundStyle(palette.ink)
             HStack {
                 ForEach(ThemeMode.allCases) { mode in
                     Button(mode.title) { model.setTheme(mode) }
@@ -194,11 +192,11 @@ struct MainView: View {
 
     private var notifications: some View {
         card {
-            Text("Уведомления").font(.headline).foregroundStyle(palette.ink)
-            toggle("За 10 минут до отключения", model.warnEnabled) { model.setWarn($0) }
-            toggle("Когда по графику включат свет", model.notifyOn) { model.setNotify($0) }
-            toggle("Не беспокоить ночью", model.quietNight) { model.setQuiet($0) }
-            Text("С 23:00 до 07:00 по Киеву уведомления не приходят.")
+            Text(Copy.notifications()).font(.headline).foregroundStyle(palette.ink)
+            toggle(Copy.warnBefore(), model.warnEnabled) { model.setWarn($0) }
+            toggle(Copy.notifyOn(), model.notifyOn) { model.setNotify($0) }
+            toggle(Copy.quietNight(), model.quietNight) { model.setQuiet($0) }
+            Text(Copy.quietHint())
                 .font(.caption)
                 .foregroundStyle(palette.muted)
         }
@@ -213,7 +211,7 @@ struct MainView: View {
 
     private func noteCard(_ note: String) -> some View {
         card {
-            Text("Сообщение оператора").font(.caption.weight(.semibold)).foregroundStyle(palette.amber)
+            Text(Copy.operatorNote()).font(.caption.weight(.semibold)).foregroundStyle(palette.amber)
             Text(note).foregroundStyle(palette.ink)
         }
     }
@@ -243,19 +241,19 @@ private struct Hint {
 }
 
 private func nextHint(_ picture: PowerPicture?, _ now: Int64) -> Hint {
-    guard let picture else { return Hint(whenText: "График подтянется с сайта", duration: nil) }
+    guard let picture else { return Hint(whenText: Copy.scheduleWillLoad(), duration: nil) }
     if picture.displayOn == true, let off = picture.nextOffAt {
-        return Hint(whenText: "По графику выключат в \(ScheduleMath.formatDayTime(off, now: now))", duration: "через \(ScheduleMath.formatDuration(off - now))")
+        return Hint(whenText: Copy.offAt(ScheduleMath.formatDayTime(off, now: now)), duration: Copy.through(ScheduleMath.formatDuration(off - now)))
     }
-    if picture.displayOn == true { return Hint(whenText: "Ближайших отключений по графику нет", duration: nil) }
+    if picture.displayOn == true { return Hint(whenText: Copy.noUpcomingOutageLong(), duration: nil) }
     if picture.displayOn == false, let back = picture.nextOnAt {
-        return Hint(whenText: "По графику включат в \(ScheduleMath.formatDayTime(back, now: now))", duration: "через \(ScheduleMath.formatDuration(back - now))")
+        return Hint(whenText: Copy.onAt(ScheduleMath.formatDayTime(back, now: now)), duration: Copy.through(ScheduleMath.formatDuration(back - now)))
     }
     if picture.displayOn == false, let until = picture.offUntil {
-        return Hint(whenText: "Света нет до конца дня, до 24:00", duration: "через \(ScheduleMath.formatDuration(until - now))")
+        return Hint(whenText: Copy.offUntilMidnight(), duration: Copy.through(ScheduleMath.formatDuration(until - now)))
     }
-    if picture.displayOn == false { return Hint(whenText: "Когда включат, на графике не сказано", duration: nil) }
-    return Hint(whenText: "Не удалось понять статус этой группы", duration: nil)
+    if picture.displayOn == false { return Hint(whenText: Copy.onTimeUnknown(), duration: nil) }
+    return Hint(whenText: Copy.statusUnknown(), duration: nil)
 }
 
 struct DaySlice: Identifiable {
@@ -294,8 +292,8 @@ struct DayTrack: View {
             HStack {
                 Text(title).font(.headline).foregroundStyle(palette.ink)
                 Spacer()
-                Text("свет \(compact(onMinutes))").font(.caption.weight(.semibold)).foregroundStyle(palette.powerOnText)
-                Text("нет \(compact(offMinutes))").font(.caption.weight(.semibold)).foregroundStyle(palette.powerOffText)
+                Text("\(Copy.lightWord()) \(compact(onMinutes))").font(.caption.weight(.semibold)).foregroundStyle(palette.powerOnText)
+                Text("\(Copy.offWord()) \(compact(offMinutes))").font(.caption.weight(.semibold)).foregroundStyle(palette.powerOffText)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -365,10 +363,6 @@ struct DayTrack: View {
     }
 
     private func compact(_ minutes: Int) -> String {
-        let hours = minutes / 60
-        let rest = minutes % 60
-        if hours > 0 && rest > 0 { return "\(hours) ч \(rest) мин" }
-        if hours > 0 { return "\(hours) ч" }
-        return "\(rest) мин"
+        Copy.duration(hours: minutes / 60, minutes: minutes % 60)
     }
 }

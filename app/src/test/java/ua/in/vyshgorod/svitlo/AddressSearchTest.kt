@@ -6,6 +6,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ua.`in`.vyshgorod.svitlo.data.AddressSearch
+import ua.`in`.vyshgorod.svitlo.data.AppLanguage
+import ua.`in`.vyshgorod.svitlo.data.L10n
 
 class AddressSearchTest {
     private val directory = AddressSearch.parseDirectory(
@@ -59,10 +61,11 @@ class AddressSearchTest {
         assertTrue(hits.hits.all { it.house == "11" })
         assertNull(hits.hint)
 
+        L10n.language = AppLanguage.Uk
         val elsewhere = AddressSearch.parseHouses(json, "м. Буча", "вул. Шевченка", "12")
         assertTrue(elsewhere.hits.none { it.house == "12" })
         assertEquals(listOf("1.2", "2.1", "3.1", "6.2"), elsewhere.hits.map { it.group }.sorted())
-        assertEquals("Такого дома нет. Показаны дома этой улицы.", elsewhere.hint)
+        assertEquals("Такого будинку немає. Показано будинки цієї вулиці.", elsewhere.hint)
     }
 
     @Test

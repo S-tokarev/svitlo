@@ -9,6 +9,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import ua.`in`.vyshgorod.svitlo.MainActivity
 import ua.`in`.vyshgorod.svitlo.R
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
 import ua.`in`.vyshgorod.svitlo.data.SvitloStore
 
@@ -20,10 +21,10 @@ object Notifier {
         val manager = context.getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Свет",
+            L10n.channelName(),
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Появление света, предупреждение за 10 минут и смена графика"
+            description = L10n.channelDescription()
         }
         manager.createNotificationChannel(channel)
     }
@@ -31,36 +32,21 @@ object Notifier {
     fun warn(context: Context, group: String, place: String?, offAt: Long) {
         val now = System.currentTimeMillis()
         val minutes = ((offAt - now) / 60_000L).toInt().coerceAtLeast(0)
-        val title = when {
-            minutes <= 1 -> "Свет выключат с минуты на минуту"
-            else -> "Свет выключат через $minutes мин"
-        }
         val whenText = ScheduleMath.formatDayTime(offAt, now)
-        show(context, 100, title, details(group, place, "по графику отключение в $whenText"))
+        show(context, 100, L10n.warnTitle(minutes), details(group, place, L10n.offDetail(whenText)))
     }
 
     fun scheduleChanged(context: Context, group: String, place: String?) {
-        show(context, 102, "График изменился", details(group, place, "расписание на сайте обновили"))
+        show(context, 102, L10n.scheduleChanged(), details(group, place, L10n.scheduleChangedTail()))
     }
 
     fun appeared(context: Context, group: String, place: String?, confirmed: Boolean) {
-        val title = if (confirmed) "По графику свет включили" else "По графику свет должны включить"
-        val tail = if (confirmed) "по графику свет есть" else "по графику ждите включения"
+        val title = if (confirmed) L10n.powerReturned() else L10n.powerShouldReturn()
+        val tail = if (confirmed) L10n.powerOnTail() else L10n.waitForPower()
         show(context, 101, title, details(group, place, tail))
     }
 
-    private fun details(group: String, place: String?, tail: String): String {
-        return buildString {
-            append("Группа ")
-            append(group)
-            if (!place.isNullOrBlank()) {
-                append(" · ")
-                append(place)
-            }
-            append(" · ")
-            append(tail)
-        }
-    }
+    private fun details(group: String, place: String?, tail: String): String = L10n.notice(group, place, tail)
 
     private fun show(context: Context, id: Int, title: String, text: String) {
         if (SvitloStore(context).quietNight() && ScheduleMath.isQuietHour(System.currentTimeMillis())) return

@@ -7,9 +7,9 @@
 		<string>ua.in.vyshgorod.svitlo.refresh</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>ru</string>
+	<string>uk</string>
 	<key>CFBundleDisplayName</key>
-	<string>График света</string>
+	<string>Графік світла</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -29,7 +29,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSUserNotificationsUsageDescription</key>
-	<string>График света предупреждает за 10 минут до отключения и сообщает, когда по графику свет включили.</string>
+	<string>Графік світла попереджає за 10 хвилин до вимкнення і повідомляє, коли за графіком світло увімкнули.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

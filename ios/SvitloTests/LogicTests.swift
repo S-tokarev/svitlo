@@ -183,10 +183,22 @@ final class LogicTests: XCTestCase {
         XCTAssertTrue(hits.hits.allSatisfy { $0.house == "11" })
         XCTAssertNil(hits.hint)
 
+        Copy.language = .uk
         let elsewhere = AddressMatch.parseHouses(json, city: "м. Буча", street: "вул. Шевченка", houseQuery: "12")
         XCTAssertTrue(elsewhere.hits.allSatisfy { $0.house != "12" })
         XCTAssertEqual(elsewhere.hits.map(\.group).sorted(), ["1.2", "2.1", "3.1", "6.2"])
-        XCTAssertEqual(elsewhere.hint, "Такого дома нет. Показаны дома этой улицы.")
+        XCTAssertEqual(elsewhere.hint, "Такого будинку немає. Показано будинки цієї вулиці.")
+        Copy.language = .ru
+        XCTAssertEqual(
+            AddressMatch.parseHouses(json, city: "м. Буча", street: "вул. Шевченка", houseQuery: "12").hint,
+            "Такого дома нет. Показаны дома этой улицы."
+        )
+        Copy.language = .en
+        XCTAssertEqual(
+            AddressMatch.parseHouses(json, city: "м. Буча", street: "вул. Шевченка", houseQuery: "12").hint,
+            "That house is not listed. Showing houses on this street."
+        )
+        Copy.language = .uk
     }
 
     func testCsrfCookieHoldsTheSecondSerializedString() {

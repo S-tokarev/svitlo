@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.PowerPicture
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
@@ -97,13 +98,13 @@ fun DesktopApp(model: DesktopModel) {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("График света", color = ink, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(L10n.appTitle(), color = ink, fontSize = 32.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Button(onClick = model::refresh, enabled = !model.loading) {
-                Text(if (model.loading) "Обновление" else "Обновить")
+                Text(if (model.loading) L10n.refreshingShort() else L10n.refresh())
             }
         }
         Text(
-            "Окно можно закрыть: программа останется в трее и проверит график через 15 минут. Щелчок по значку снова откроет окно.",
+            L10n.trayHint(),
             color = muted,
             fontSize = 13.sp,
         )
@@ -113,7 +114,7 @@ fun DesktopApp(model: DesktopModel) {
         val today = picture?.outagesToday
         if (picture != null && (today?.isNotEmpty() == true || picture.plannedOn != null)) {
             DayCard(
-                title = picture.scheduleLabel.ifBlank { "Сегодня" },
+                title = picture.scheduleLabel.ifBlank { L10n.today() },
                 outages = today.orEmpty(),
                 nowMin = ScheduleMath.minuteOfDay(now),
                 card = card,
@@ -128,7 +129,7 @@ fun DesktopApp(model: DesktopModel) {
             ScheduleMath.groupHasTomorrow(it, model.selection.group)
         } == true
         if (picture != null && tomorrow != null && (tomorrow.isNotEmpty() || tomorrowPublished)) {
-            DayCard("Завтра", tomorrow, null, card, ink, muted, onText, offText)
+            DayCard(L10n.tomorrow(), tomorrow, null, card, ink, muted, onText, offText)
         }
         GroupCard(model, card, card2, ink, muted, onText, offText)
         SearchCard(model, card, card2, ink, muted)
@@ -156,16 +157,11 @@ private fun StatusCard(
         null -> ink
     }
     val title = when (on) {
-        true -> "Свет есть"
-        false -> "Света нет"
-        null -> if (model.selection.group.isBlank()) "Выберите группу" else "Нет данных"
+        true -> L10n.powerOn()
+        false -> L10n.powerOff()
+        null -> if (model.selection.group.isBlank()) L10n.chooseGroup() else L10n.noData()
     }
-    val place = model.selection.placeLabel
-    val heading = when {
-        !place.isNullOrBlank() -> "$place · группа ${model.selection.group}"
-        model.selection.group.isBlank() -> "Группа не выбрана"
-        else -> "Группа ${model.selection.group}"
-    }
+    val heading = L10n.placeHeading(model.selection.placeLabel, model.selection.group)
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(card).padding(18.dp)) {
         Text(heading, color = muted, fontSize = 13.sp)
         Text(title, color = color, fontSize = 36.sp, fontWeight = FontWeight.Bold)
@@ -173,7 +169,7 @@ private fun StatusCard(
         hint.second?.let { Text(it, color = color, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
         model.snapshot?.let {
             Spacer(Modifier.height(8.dp))
-            Text("Обновлено ${ScheduleMath.formatDayTime(it.fetchedAt, now)}", color = muted, fontSize = 12.sp)
+            Text(L10n.updated(ScheduleMath.formatDayTime(it.fetchedAt, now)), color = muted, fontSize = 12.sp)
         }
     }
 }
@@ -196,8 +192,8 @@ private fun DayCard(
         Text(title, color = ink, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Total("Свет есть", onMinutes, onText, Modifier.weight(1f))
-            Total("Света нет", offMinutes, offText, Modifier.weight(1f))
+            Total(L10n.powerOn(), onMinutes, onText, Modifier.weight(1f))
+            Total(L10n.powerOff(), offMinutes, offText, Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))
         DayTrack(
@@ -221,7 +217,7 @@ private fun DayCard(
                         color = ink,
                     )
                     Text(
-                        (if (slice.powerOn) "свет есть" else "света нет") + if (current) " · сейчас" else "",
+                        L10n.sliceLabel(slice.powerOn, current),
                         color = if (current) accent else muted,
                         fontSize = 12.sp,
                     )
@@ -252,7 +248,7 @@ private fun GroupCard(
 ) {
     val groups = ScheduleMath.knownGroups(model.snapshot)
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(card).padding(18.dp)) {
-        Text("Группа", color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Text(L10n.groupSection(), color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         groups.chunked(6).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
@@ -292,8 +288,8 @@ private fun GroupCard(
 @Composable
 private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Color, muted: Color) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(card).padding(18.dp)) {
-        Text("Адреса", color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-        Text("Можно сохранить несколько. Адрес выбирает группу.", color = muted, fontSize = 13.sp)
+        Text(L10n.addresses(), color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Text(L10n.addressesHint(), color = muted, fontSize = 13.sp)
         if (model.places.isNotEmpty()) Spacer(Modifier.height(8.dp))
         model.places.forEach { place ->
             val on = model.snapshot?.let { ScheduleMath.picture(it, place, model.now).displayOn }
@@ -305,13 +301,9 @@ private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Colo
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f).clickable { model.focusPlace(place) }) {
-                    Text(place.placeLabel ?: "Группа ${place.group}", color = ink, fontWeight = FontWeight.Medium)
+                    Text(place.placeLabel ?: L10n.groupTitle(place.group), color = ink, fontWeight = FontWeight.Medium)
                     Text(
-                        "группа ${place.group} · " + when (on) {
-                            true -> "свет есть"
-                            false -> "света нет"
-                            null -> "нет данных"
-                        },
+                        L10n.savedPlaceStatus(place.group, on),
                         color = when (on) {
                             true -> OnGreen
                             false -> OffRed
@@ -321,7 +313,7 @@ private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Colo
                     )
                 }
                 Text(
-                    "Убрать",
+                    L10n.remove(),
                     color = muted,
                     fontSize = 13.sp,
                     modifier = Modifier.clickable { model.removePlace(place) }.padding(8.dp),
@@ -335,10 +327,10 @@ private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Colo
                 onValueChange = { model.query = it },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                placeholder = { Text("Улица и дом, например Буча Шевченка 11") },
+                placeholder = { Text(L10n.addressHint()) },
             )
             Spacer(Modifier.width(8.dp))
-            Button(onClick = model::search) { Text("Найти") }
+            Button(onClick = model::search) { Text(L10n.searchDesktop()) }
         }
         model.hint?.let {
             Spacer(Modifier.height(6.dp))
@@ -346,7 +338,7 @@ private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Colo
         }
         model.hits.take(12).forEach { hit ->
             Text(
-                if (hit.group.isBlank()) hit.label else "${hit.label}  ·  группа ${hit.group}",
+                L10n.addressHit(hit.label, hit.group),
                 color = ink,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -363,7 +355,7 @@ private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Colo
 @Composable
 private fun SettingsCard(model: DesktopModel, card: Color, ink: Color) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(card).padding(18.dp)) {
-        Text("Оформление", color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Text(L10n.appearance(), color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThemeMode.entries.forEach { mode ->
@@ -380,9 +372,9 @@ private fun SettingsCard(model: DesktopModel, card: Color, ink: Color) {
             }
         }
         Spacer(Modifier.height(12.dp))
-        Toggle("Предупреждать за 10 минут до отключения", model.warn, model::updateWarn, ink)
-        Toggle("Сообщать, когда по графику включат свет", model.notifyOn, model::updateNotify, ink)
-        Toggle("Не беспокоить ночью, с 23:00 до 07:00", model.quiet, model::updateQuiet, ink)
+        Toggle(L10n.warnToggleDesktop(), model.warn, model::updateWarn, ink)
+        Toggle(L10n.notifyOnDesktop(), model.notifyOn, model::updateNotify, ink)
+        Toggle(L10n.quietNightDesktop(), model.quiet, model::updateQuiet, ink)
     }
 }
 
@@ -395,20 +387,20 @@ private fun Toggle(title: String, checked: Boolean, onChange: (Boolean) -> Unit,
 }
 
 private fun nextHint(picture: PowerPicture?, now: Long): Pair<String, String?> {
-    if (picture == null) return "График подтянется с сайта" to null
+    if (picture == null) return L10n.scheduleWillLoad() to null
     val on = picture.displayOn
     val off = picture.nextOffAt
     val back = picture.nextOnAt
     return when {
-        on == true && off != null -> "По графику выключат в ${ScheduleMath.formatDayTime(off, now)}" to
-            "через ${ScheduleMath.formatDuration(off - now)}"
-        on == true -> "Ближайших отключений по графику нет" to null
-        on == false && back != null -> "По графику включат в ${ScheduleMath.formatDayTime(back, now)}" to
-            "через ${ScheduleMath.formatDuration(back - now)}"
-        on == false && picture.offUntil != null -> "Света нет до конца дня, до 24:00" to
-            "через ${ScheduleMath.formatDuration(picture.offUntil - now)}"
-        on == false -> "Когда включат, на графике не сказано" to null
-        else -> "Не удалось понять статус этой группы" to null
+        on == true && off != null -> L10n.offAt(ScheduleMath.formatDayTime(off, now)) to
+            L10n.through(ScheduleMath.formatDuration(off - now))
+        on == true -> L10n.noUpcomingOutageLong() to null
+        on == false && back != null -> L10n.onAt(ScheduleMath.formatDayTime(back, now)) to
+            L10n.through(ScheduleMath.formatDuration(back - now))
+        on == false && picture.offUntil != null -> L10n.offUntilMidnight() to
+            L10n.through(ScheduleMath.formatDuration(picture.offUntil - now))
+        on == false -> L10n.onTimeUnknown() to null
+        else -> L10n.statusUnknown() to null
     }
 }
 
@@ -560,15 +552,7 @@ private fun hourLabel(minute: Int): String {
     return if (rest == 0) "%02d".format(hour) else "%02d:%02d".format(hour, rest)
 }
 
-private fun compactDuration(minutes: Int): String {
-    val hours = minutes / 60
-    val rest = minutes % 60
-    return when {
-        hours > 0 && rest > 0 -> "${hours}ч ${rest}м"
-        hours > 0 -> "${hours}ч"
-        else -> "${rest}м"
-    }
-}
+private fun compactDuration(minutes: Int): String = L10n.compact(minutes / 60, minutes % 60)
 
 @Composable
 fun DesktopWidget(model: DesktopModel) {
@@ -588,9 +572,9 @@ fun DesktopWidget(model: DesktopModel) {
         Modifier.fillMaxSize().background(paper).verticalScroll(rememberScrollState()).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("График света", color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(L10n.appTitle(), color = ink, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         if (items.isEmpty()) {
-            Text("Добавьте адрес в окне программы.", color = muted, fontSize = 13.sp)
+            Text(L10n.addAddressInWindow(), color = muted, fontSize = 13.sp)
         }
         items.forEach { place ->
             val picture = model.snapshot?.let { ScheduleMath.picture(it, place, model.now) }
@@ -601,12 +585,12 @@ fun DesktopWidget(model: DesktopModel) {
                 null -> ink
             }
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(card).padding(12.dp)) {
-                Text(place.placeLabel ?: "Группа ${place.group}", color = muted, fontSize = 12.sp)
+                Text(place.placeLabel ?: L10n.groupTitle(place.group), color = muted, fontSize = 12.sp)
                 Text(
                     when (on) {
-                        true -> "Свет есть"
-                        false -> "Света нет"
-                        null -> "Нет данных"
+                        true -> L10n.powerOn()
+                        false -> L10n.powerOff()
+                        null -> L10n.noData()
                     },
                     color = color,
                     fontSize = 22.sp,

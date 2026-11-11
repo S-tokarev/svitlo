@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Power schedule</string>
+    <string name="widget_description">Power status of the selected group from the DTEK schedule</string>
+</resources>

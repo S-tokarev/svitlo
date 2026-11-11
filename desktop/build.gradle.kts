@@ -39,11 +39,11 @@ compose.desktop {
             macOS {
                 bundleID = "ua.in.vyshgorod.svitlo.desktop"
                 iconFile.set(project.file("icons/icon.icns"))
-                dockName = "График света"
+                dockName = "Графік світла"
                 infoPlist {
                     extraKeysRawXml = """
                         <key>CFBundleDisplayName</key>
-                        <string>График света</string>
+                        <string>Графік світла</string>
                     """.trimIndent()
                 }
             }

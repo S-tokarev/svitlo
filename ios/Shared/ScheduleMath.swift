@@ -10,24 +10,21 @@ enum ScheduleMath {
     private static let liveFreshMs: Int64 = 20 * 60 * 1000
     private static let mergeMs: Int64 = 20 * 60 * 1000
 
-    static func dayLabel(_ date: Date) -> String {
+    static func dayLabel(_ date: Date, language: AppLanguage = Copy.language) -> String {
         let parts = calendar().dateComponents([.day, .month], from: date)
-        return dayLabel(day: parts.day ?? 1, month: parts.month ?? 0)
+        return dayLabel(day: parts.day ?? 1, month: parts.month ?? 0, language: language)
     }
 
-    static func dayLabel(_ updatedDate: String) -> String {
+    static func dayLabel(_ updatedDate: String, language: AppLanguage = Copy.language) -> String {
         let parts = updatedDate.split(separator: ".")
         guard parts.count >= 2, let day = Int(parts[0]), let month = Int(parts[1]) else { return "" }
-        return dayLabel(day: day, month: month)
+        return dayLabel(day: day, month: month, language: language)
     }
 
-    private static func dayLabel(day: Int, month: Int) -> String {
-        let months = [
-            "января", "февраля", "марта", "апреля", "мая", "июня",
-            "июля", "августа", "сентября", "октября", "ноября", "декабря",
-        ]
-        guard month >= 1, month <= months.count else { return "" }
-        return "\(day) \(months[month - 1])"
+    private static func dayLabel(day: Int, month: Int, language: AppLanguage) -> String {
+        let name = Copy.month(month, language: language)
+        guard !name.isEmpty else { return "" }
+        return "\(day) \(name)"
     }
 
     static func calendar() -> Calendar {
@@ -186,7 +183,7 @@ enum ScheduleMath {
         let nowDay = startOfDay(date(from: now))
         let clock = formatClock(epochMs)
         if whenDay == nowDay { return clock }
-        if whenDay == adding(days: 1, to: nowDay) { return "завтра \(clock)" }
+        if whenDay == adding(days: 1, to: nowDay) { return Copy.tomorrowAt(clock) }
         let parts = calendar().dateComponents([.day, .month], from: date(from: epochMs))
         let day = parts.day ?? 0
         let month = String(format: "%02d", parts.month ?? 0)
@@ -195,11 +192,7 @@ enum ScheduleMath {
 
     static func formatDuration(_ ms: Int64) -> String {
         let total = max(0, Int(ms / 60_000))
-        let hours = total / 60
-        let minutes = total % 60
-        if hours > 0 && minutes > 0 { return "\(hours) ч \(minutes) мин" }
-        if hours > 0 { return "\(hours) ч" }
-        return "\(minutes) мин"
+        return Copy.duration(hours: total / 60, minutes: total % 60)
     }
 
     static func formatClock(minutes: Int) -> String {

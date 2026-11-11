@@ -26,7 +26,7 @@ object SvitloClient {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            if (code !in 200..299) error("Сайт ответил $code")
+            if (code !in 200..299) error(L10n.siteAnswered(code))
             return body
         } finally {
             connection.disconnect()

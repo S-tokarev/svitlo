@@ -44,7 +44,7 @@ object SvitloRepository {
     fun refreshBlocking(context: Context): Snapshot {
         val parsed = SvitloParser.parse(SvitloClient.fetchPage())
         if (parsed.days.isEmpty()) {
-            error("Сайт отдал страницу без графика")
+            error(L10n.emptySchedule())
         }
         val snapshot = Snapshot(
             fetchedAt = System.currentTimeMillis(),

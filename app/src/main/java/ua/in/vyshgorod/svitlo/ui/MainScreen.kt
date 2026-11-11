@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.PowerPicture
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
@@ -101,7 +102,7 @@ fun MainScreen(
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("График света", color = LocalSvitloColors.current.ink, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                    Text(L10n.appTitle(), color = LocalSvitloColors.current.ink, fontSize = 34.sp, fontWeight = FontWeight.Bold)
                 }
                 if (state.loading) {
                     CircularProgressIndicator(
@@ -117,7 +118,7 @@ fun MainScreen(
                     shape = RoundedCornerShape(14.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                 ) {
-                    Text(if (state.loading) "Обновляем…" else "Обновить")
+                    Text(if (state.loading) L10n.refreshing() else L10n.refresh())
                 }
             }
         }
@@ -130,7 +131,7 @@ fun MainScreen(
         if (note != null) {
             item {
                 Panel(tint = LocalSvitloColors.current.note) {
-                    Text("Сообщение оператора", color = LocalSvitloColors.current.amber, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(L10n.operatorNote(), color = LocalSvitloColors.current.amber, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(6.dp))
                     Text(note, color = LocalSvitloColors.current.ink, fontSize = 15.sp, lineHeight = 21.sp)
                 }
@@ -149,7 +150,7 @@ fun MainScreen(
         if (picture != null && picture.outagesToday.isNotEmpty()) {
             item {
                 DayScheduleCard(
-                    title = if (picture.scheduleLabel.isBlank()) "Сегодня" else picture.scheduleLabel,
+                    title = if (picture.scheduleLabel.isBlank()) L10n.today() else picture.scheduleLabel,
                     outages = picture.outagesToday,
                     nowMin = ScheduleMath.minuteOfDay(now),
                 )
@@ -157,7 +158,7 @@ fun MainScreen(
         } else if (picture?.plannedOn != null) {
             item {
                 DayScheduleCard(
-                    title = if (picture.scheduleLabel.isBlank()) "Сегодня" else picture.scheduleLabel,
+                    title = if (picture.scheduleLabel.isBlank()) L10n.today() else picture.scheduleLabel,
                     outages = emptyList(),
                     nowMin = ScheduleMath.minuteOfDay(now),
                 )
@@ -167,20 +168,20 @@ fun MainScreen(
         if (picture != null && picture.outagesTomorrow.isNotEmpty()) {
             item {
                 DayScheduleCard(
-                    title = "Завтра",
+                    title = L10n.tomorrow(),
                     outages = picture.outagesTomorrow,
                     nowMin = null,
                 )
             }
         } else if (tomorrowPublished) {
             item {
-                DayScheduleCard(title = "Завтра", outages = emptyList(), nowMin = null)
+                DayScheduleCard(title = L10n.tomorrow(), outages = emptyList(), nowMin = null)
             }
         }
 
         item {
             Panel {
-                SectionTitle("Группа")
+                SectionTitle(L10n.groupSection())
                 Spacer(Modifier.height(10.dp))
                 groups.chunked(4).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
@@ -205,10 +206,10 @@ fun MainScreen(
 
         item {
             Panel {
-                SectionTitle("Адреса")
+                SectionTitle(L10n.addresses())
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Можно сохранить несколько. Адрес выбирает группу.",
+                    L10n.addressesHint(),
                     color = LocalSvitloColors.current.muted,
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -217,12 +218,7 @@ fun MainScreen(
                 state.places.forEach { place ->
                     val on = state.snapshot?.let { ScheduleMath.picture(it, place, now).displayOn }
                     val selected = place.placeKey == state.selection.placeKey
-                    val title = place.placeLabel ?: "Группа ${place.group}"
-                    val status = when (on) {
-                        true -> "свет есть"
-                        false -> "света нет"
-                        null -> "нет данных"
-                    }
+                    val title = place.placeLabel ?: L10n.groupTitle(place.group)
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -235,7 +231,7 @@ fun MainScreen(
                         Column(Modifier.weight(1f).clickable { onFocusPlace(place) }) {
                             Text(title, color = LocalSvitloColors.current.ink, fontWeight = FontWeight.Medium)
                             Text(
-                                "группа ${place.group} · $status",
+                                L10n.savedPlaceStatus(place.group, on),
                                 color = when (on) {
                                     true -> LocalSvitloColors.current.powerOnText
                                     false -> LocalSvitloColors.current.powerOffText
@@ -245,7 +241,7 @@ fun MainScreen(
                             )
                         }
                         Text(
-                            "Убрать",
+                            L10n.remove(),
                             color = LocalSvitloColors.current.muted,
                             fontSize = 13.sp,
                             modifier = Modifier.clickable { onRemovePlace(place) }.padding(8.dp),
@@ -259,7 +255,7 @@ fun MainScreen(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     shape = RoundedCornerShape(16.dp),
-                    placeholder = { Text("Улица и дом, например Буча Шевченка 11") },
+                    placeholder = { Text(L10n.addressHint()) },
                     colors = fieldColors(),
                 )
                 Spacer(Modifier.height(10.dp))
@@ -268,7 +264,7 @@ fun MainScreen(
                     enabled = !state.searching,
                     shape = RoundedCornerShape(14.dp),
                 ) {
-                    Text(if (state.searching) "Ищем…" else "Найти группу")
+                    Text(if (state.searching) L10n.searching() else L10n.search())
                 }
                 state.searchError?.let {
                     Spacer(Modifier.height(8.dp))
@@ -278,7 +274,7 @@ fun MainScreen(
                 state.results.take(40).forEach { hit ->
                     Text(
                         if (hit.group.isBlank()) "${hit.city}, ${hit.street}"
-                        else "${hit.label}  ·  группа ${hit.group}",
+                        else L10n.addressHit(hit.label, hit.group),
                         color = LocalSvitloColors.current.ink,
                         fontSize = 15.sp,
                         modifier = Modifier
@@ -295,16 +291,16 @@ fun MainScreen(
 
         item {
             Panel {
-                SectionTitle("Оформление")
+                SectionTitle(L10n.appearance())
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeChoice("Система", state.themeMode == ThemeMode.System, Modifier.weight(1f)) {
+                    ThemeChoice(L10n.themeSystem(), state.themeMode == ThemeMode.System, Modifier.weight(1f)) {
                         onTheme(ThemeMode.System)
                     }
-                    ThemeChoice("Светлая", state.themeMode == ThemeMode.Light, Modifier.weight(1f)) {
+                    ThemeChoice(L10n.themeLight(), state.themeMode == ThemeMode.Light, Modifier.weight(1f)) {
                         onTheme(ThemeMode.Light)
                     }
-                    ThemeChoice("Тёмная", state.themeMode == ThemeMode.Dark, Modifier.weight(1f)) {
+                    ThemeChoice(L10n.themeDark(), state.themeMode == ThemeMode.Dark, Modifier.weight(1f)) {
                         onTheme(ThemeMode.Dark)
                     }
                 }
@@ -313,13 +309,13 @@ fun MainScreen(
 
         item {
             Panel {
-                SectionTitle("Уведомления")
+                SectionTitle(L10n.notifications())
                 Spacer(Modifier.height(4.dp))
-                SettingRow("За 10 минут до отключения", state.warnEnabled, onWarn)
-                SettingRow("Когда по графику включат свет", state.notifyOn, onNotifyOn)
-                SettingRow("Не беспокоить ночью", state.quietNight, onQuietNight)
+                SettingRow(L10n.warnBefore(), state.warnEnabled, onWarn)
+                SettingRow(L10n.notifyOn(), state.notifyOn, onNotifyOn)
+                SettingRow(L10n.quietNight(), state.quietNight, onQuietNight)
                 Text(
-                    "С 23:00 до 07:00 по Киеву уведомления не приходят.",
+                    L10n.quietHint(),
                     color = LocalSvitloColors.current.muted,
                     fontSize = 12.sp,
                     lineHeight = 16.sp,
@@ -329,12 +325,12 @@ fun MainScreen(
                     OutlinedButton(
                         onClick = onRequestNotifications,
                         shape = RoundedCornerShape(14.dp),
-                    ) { Text("Разрешить уведомления") }
+                    ) { Text(L10n.allowNotifications()) }
                 }
                 if (!state.batteryFree) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Чтобы предупреждение приходило вовремя, разрешите приложению работать в фоне.",
+                        L10n.batteryHint(),
                         color = LocalSvitloColors.current.muted,
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
@@ -343,7 +339,7 @@ fun MainScreen(
                     OutlinedButton(
                         onClick = onRequestBattery,
                         shape = RoundedCornerShape(14.dp),
-                    ) { Text("Разрешить работу в фоне") }
+                    ) { Text(L10n.allowBackground()) }
                 }
             }
         }
@@ -352,12 +348,12 @@ fun MainScreen(
             val updated = picture?.updatedLabel?.takeIf { it.isNotBlank() }
             Column(Modifier.clickable(onClick = onOpenSource).padding(horizontal = 4.dp, vertical = 2.dp)) {
                 if (updated != null) {
-                    Text("График на сайте обновлён $updated", color = LocalSvitloColors.current.muted, fontSize = 12.sp)
+                    Text(L10n.siteUpdated(updated), color = LocalSvitloColors.current.muted, fontSize = 12.sp)
                     Spacer(Modifier.height(2.dp))
                 }
-                Text("ДТЕК · Киевские региональные электросети", color = LocalSvitloColors.current.muted, fontSize = 12.sp)
+                Text(L10n.dtekCredit(), color = LocalSvitloColors.current.muted, fontSize = 12.sp)
                 Spacer(Modifier.height(4.dp))
-                Text("Открыть график на сайте", color = LocalSvitloColors.current.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(L10n.openSchedule(), color = LocalSvitloColors.current.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -367,10 +363,10 @@ fun MainScreen(
 private fun StatusCard(selection: Selection, picture: PowerPicture?, fetchedAt: Long?, now: Long) {
     val on = picture?.displayOn
     val title = when {
-        selection.group.isBlank() -> "Выберите группу"
-        on == true -> "Свет есть"
-        on == false -> "Света нет"
-        else -> "Нет данных"
+        selection.group.isBlank() -> L10n.chooseGroup()
+        on == true -> L10n.powerOn()
+        on == false -> L10n.powerOff()
+        else -> L10n.noData()
     }
     val color = when (on) {
         true -> LocalSvitloColors.current.powerOnText
@@ -419,14 +415,14 @@ private fun StatusCard(selection: Selection, picture: PowerPicture?, fetchedAt: 
                 if (picture?.usingHouse == true && houseOn != null && planned != null && houseOn != planned) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        if (planned) "По графику группы свет должен быть" else "По графику группы света быть не должно",
+                        if (planned) L10n.plannedShouldBeOn() else L10n.plannedShouldBeOff(),
                         color = LocalSvitloColors.current.amber,
                         fontSize = 13.sp,
                     )
                 }
                 if (fetchedAt != null && fetchedAt > 0L) {
                     Spacer(Modifier.height(10.dp))
-                    Text("Обновлено ${ScheduleMath.formatDayTime(fetchedAt, now)}", color = LocalSvitloColors.current.muted, fontSize = 12.sp)
+                    Text(L10n.updated(ScheduleMath.formatDayTime(fetchedAt, now)), color = LocalSvitloColors.current.muted, fontSize = 12.sp)
                 }
             }
         }
@@ -435,13 +431,8 @@ private fun StatusCard(selection: Selection, picture: PowerPicture?, fetchedAt: 
 
 @Composable
 private fun StatusHeading(selection: Selection, title: String, color: Color) {
-    val place = selection.placeLabel
     Text(
-        when {
-            place != null -> "$place · группа ${selection.group}"
-            selection.group.isBlank() -> "Группа не выбрана"
-            else -> "Группа ${selection.group}"
-        },
+        L10n.placeHeading(selection.placeLabel, selection.group),
         color = LocalSvitloColors.current.muted,
         fontSize = 13.sp,
     )
@@ -452,26 +443,26 @@ private fun StatusHeading(selection: Selection, title: String, color: Color) {
 private data class NextHint(val whenText: String, val duration: String?)
 
 private fun nextHint(picture: PowerPicture?, now: Long): NextHint {
-    if (picture == null) return NextHint("График подтянется с сайта", null)
+    if (picture == null) return NextHint(L10n.scheduleWillLoad(), null)
     val on = picture.displayOn
     val off = picture.nextOffAt
     val back = picture.nextOnAt
     return when {
         on == true && off != null -> NextHint(
-            "По графику выключат в ${ScheduleMath.formatDayTime(off, now)}",
-            "через ${ScheduleMath.formatDuration(off - now)}",
+            L10n.offAt(ScheduleMath.formatDayTime(off, now)),
+            L10n.through(ScheduleMath.formatDuration(off - now)),
         )
-        on == true -> NextHint("Ближайших отключений по графику нет", null)
+        on == true -> NextHint(L10n.noUpcomingOutageLong(), null)
         on == false && back != null -> NextHint(
-            "По графику включат в ${ScheduleMath.formatDayTime(back, now)}",
-            "через ${ScheduleMath.formatDuration(back - now)}",
+            L10n.onAt(ScheduleMath.formatDayTime(back, now)),
+            L10n.through(ScheduleMath.formatDuration(back - now)),
         )
         on == false && picture.offUntil != null -> NextHint(
-            "Света нет до конца дня, до 24:00",
-            "через ${ScheduleMath.formatDuration(picture.offUntil - now)}",
+            L10n.offUntilMidnight(),
+            L10n.through(ScheduleMath.formatDuration(picture.offUntil - now)),
         )
-        on == false -> NextHint("Когда включат, на графике не сказано", null)
-        else -> NextHint("Не удалось понять статус этой группы", null)
+        on == false -> NextHint(L10n.onTimeUnknown(), null)
+        else -> NextHint(L10n.statusUnknown(), null)
     }
 }
 
@@ -484,8 +475,8 @@ private fun DayScheduleCard(title: String, outages: List<Outage>, nowMin: Int?) 
         Text(title, color = LocalSvitloColors.current.ink, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TotalChip("Свет есть", onMinutes, LocalSvitloColors.current.powerOnText, LocalSvitloColors.current.powerOn, Modifier.weight(1f))
-            TotalChip("Света нет", offMinutes, LocalSvitloColors.current.powerOffText, LocalSvitloColors.current.powerOff, Modifier.weight(1f))
+            TotalChip(L10n.powerOn(), onMinutes, LocalSvitloColors.current.powerOnText, LocalSvitloColors.current.powerOn, Modifier.weight(1f))
+            TotalChip(L10n.powerOff(), offMinutes, LocalSvitloColors.current.powerOffText, LocalSvitloColors.current.powerOff, Modifier.weight(1f))
         }
         Spacer(Modifier.height(14.dp))
         DayTrack(slices, nowMin)
@@ -517,7 +508,7 @@ private fun TotalChip(
         }
         Spacer(Modifier.height(2.dp))
         Text(
-            if (minutes <= 0) "нет" else ScheduleMath.formatDuration(minutes * 60_000L),
+            if (minutes <= 0) L10n.none() else ScheduleMath.formatDuration(minutes * 60_000L),
             color = textColor,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
@@ -635,7 +626,6 @@ private fun DayTrack(slices: List<DaySlice>, nowMin: Int?) {
 private fun SliceRow(slice: DaySlice, nowMin: Int?) {
     val current = nowMin != null && nowMin >= slice.startMin && nowMin < slice.endMin
     val accent = if (slice.powerOn) LocalSvitloColors.current.powerOnText else LocalSvitloColors.current.powerOffText
-    val name = if (slice.powerOn) "свет есть" else "света нет"
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -661,7 +651,7 @@ private fun SliceRow(slice: DaySlice, nowMin: Int?) {
                 fontWeight = FontWeight.Medium,
             )
             Text(
-                if (current) "$name · сейчас" else name,
+                L10n.sliceLabel(slice.powerOn, current),
                 color = if (current) accent else LocalSvitloColors.current.muted,
                 fontSize = 12.sp,
             )
@@ -852,11 +842,5 @@ private fun switchMarks(slices: List<DaySlice>): List<SwitchMark> {
 }
 
 private fun compactDuration(minutes: Int): String {
-    val hours = minutes / 60
-    val rest = minutes % 60
-    return when {
-        hours > 0 && rest > 0 -> "${hours}ч ${rest}м"
-        hours > 0 -> "${hours}ч"
-        else -> "${rest}м"
-    }
+    return L10n.compact(minutes / 60, minutes % 60)
 }

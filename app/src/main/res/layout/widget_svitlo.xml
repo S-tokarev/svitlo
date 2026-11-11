@@ -11,7 +11,7 @@
         android:id="@+id/widget_kicker"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="График света"
+        android:text="Графік світла"
         android:maxLines="2"
         android:ellipsize="end"
         android:textColor="#B6AB9C"
@@ -22,7 +22,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
-        android:text="Выберите группу"
+        android:text="Оберіть групу"
         android:textColor="#F6F1E7"
         android:textSize="22sp"
         android:textStyle="bold" />
@@ -34,7 +34,7 @@
         android:layout_marginTop="2dp"
         android:ellipsize="end"
         android:maxLines="2"
-        android:text="Откройте приложение"
+        android:text="Відкрийте застосунок"
         android:textColor="#F6F1E7"
         android:textSize="14sp" />
 
@@ -43,7 +43,7 @@
         android:layout_width="match_parent"
         android:layout_height="32dp"
         android:layout_marginTop="8dp"
-        android:contentDescription="График на сегодня"
+        android:contentDescription="Графік на сьогодні"
         android:scaleType="fitXY"
         android:visibility="gone" />
 
@@ -52,7 +52,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:text="График ДТЕК · alerts.energy"
+        android:text="Графік ДТЕК · alerts.energy"
         android:textColor="#B6AB9C"
         android:textSize="11sp" />
 </LinearLayout>

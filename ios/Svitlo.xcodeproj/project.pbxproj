@@ -231,12 +231,13 @@
 			};
 			buildConfigurationList = A10000000000000000000070 /* Build configuration list for PBXProject "Svitlo" */;
 			compatibilityVersion = "Xcode 16.0";
-			developmentRegion = ru;
+			developmentRegion = uk;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 				ru,
+				uk,
 			);
 			mainGroup = A10000000000000000000002;
 			minimizedProjectReferenceProxies = 1;

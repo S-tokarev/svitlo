@@ -1,0 +1,2 @@
+"CFBundleDisplayName" = "Power schedule";
+"NSUserNotificationsUsageDescription" = "Power schedule warns you 10 minutes before an outage and tells you when the power comes back on schedule.";

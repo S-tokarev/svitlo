@@ -26,6 +26,7 @@ import android.content.pm.PackageManager
 import ua.`in`.vyshgorod.svitlo.alert.AlarmScheduler
 import ua.`in`.vyshgorod.svitlo.alert.Notifier
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.AddressSearch
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.SvitloClient
@@ -123,7 +124,7 @@ class MainActivity : ComponentActivity() {
                     onFailure = { error ->
                         screen = screen.copy(
                             loading = false,
-                            error = error.message ?: "Не удалось загрузить график",
+                            error = error.message ?: L10n.refreshFailed(),
                         )
                     },
                 )
@@ -161,9 +162,9 @@ class MainActivity : ComponentActivity() {
             SvitloRepository.housesAsync(this, hit.city, hit.street, AddressSearch.houseFilter(screen.query)) { result ->
                 runOnUiThread {
                     result.fold(
-                        onSuccess = { lookup -> showLookup(lookup, "ДТЕК не указал группу для этой улицы") },
+                        onSuccess = { lookup -> showLookup(lookup, L10n.streetHasNoGroup()) },
                         onFailure = { error ->
-                            screen = screen.copy(searching = false, searchError = error.message ?: "Поиск не ответил")
+                            screen = screen.copy(searching = false, searchError = error.message ?: L10n.searchFailed())
                         },
                     )
                 }
@@ -180,16 +181,16 @@ class MainActivity : ComponentActivity() {
     private fun search() {
         val query = screen.query.trim()
         if (query.length < 2) {
-            screen = screen.copy(searchError = "Введите хотя бы 2 буквы")
+            screen = screen.copy(searchError = L10n.typeTwoLetters())
             return
         }
         screen = screen.copy(searching = true, searchError = null)
         SvitloRepository.searchAsync(this, query) { result ->
             runOnUiThread {
                 result.fold(
-                    onSuccess = { lookup -> showLookup(lookup, "Ничего не найдено") },
+                    onSuccess = { lookup -> showLookup(lookup, L10n.nothingFound()) },
                     onFailure = { error ->
-                        screen = screen.copy(searching = false, searchError = error.message ?: "Поиск не ответил")
+                        screen = screen.copy(searching = false, searchError = error.message ?: L10n.searchFailed())
                     },
                 )
             }
@@ -269,5 +270,5 @@ private fun Context.findActivity(): Activity {
         if (current is Activity) return current
         current = current.baseContext
     }
-    error("Окно приложения не найдено")
+    error(L10n.windowMissing())
 }

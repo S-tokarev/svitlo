@@ -20,6 +20,7 @@ import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import ua.`in`.vyshgorod.svitlo.data.L10n
 
 private val showRequests = Channel<Unit>(Channel.CONFLATED)
 
@@ -76,18 +77,18 @@ fun main() {
             tooltip = model.tooltip(),
             onAction = { show() },
             menu = {
-                Item(if (widgetOpen.value) "Скрыть виджет" else "Виджет") {
+                Item(if (widgetOpen.value) L10n.hideWidget() else L10n.widget()) {
                     widgetOpen.value = !widgetOpen.value
                     DesktopStore.setWidgetOpen(widgetOpen.value)
                 }
-                Item("Открыть") { show() }
-                Item("Обновить") { model.refresh() }
-                Item("Выход", onClick = ::exitApplication)
+                Item(L10n.open()) { show() }
+                Item(L10n.refresh()) { model.refresh() }
+                Item(L10n.exit(), onClick = ::exitApplication)
             },
         )
         Window(
             onCloseRequest = { open.value = false },
-            title = "График света",
+            title = L10n.appTitle(),
             icon = icon,
             state = windowState,
             visible = open.value,
@@ -113,7 +114,7 @@ fun main() {
                     widgetOpen.value = false
                     DesktopStore.setWidgetOpen(false)
                 },
-                title = "График света",
+                title = L10n.appTitle(),
                 icon = icon,
                 alwaysOnTop = true,
                 state = rememberWindowState(width = 400.dp, height = 680.dp),

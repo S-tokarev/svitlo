@@ -51,7 +51,7 @@ object AddressSearch {
 
     fun search(query: String, cacheFile: File): Lookup {
         val parsed = parseQuery(query)
-        if (parsed.tokens.isEmpty()) error("Введите название улицы")
+        if (parsed.tokens.isEmpty()) error(L10n.typeStreet())
         val streets = loadDirectory(cacheFile)
         val found = matchStreets(streets, parsed)
         if (found.streets.isEmpty()) return Lookup(emptyList())
@@ -64,7 +64,7 @@ object AddressSearch {
                 return Lookup(hits.distinctBy { it.city + it.street + it.house + it.group }.take(HOUSE_LIMIT))
             }
         }
-        val hint = if (found.truncated) "Много улиц. Добавьте населённый пункт." else null
+        val hint = if (found.truncated) L10n.manyStreets() else null
         return Lookup(
             found.streets.map { AddressHit(city = it.city, street = it.street, house = "", group = "") },
             hint,
@@ -111,9 +111,9 @@ object AddressSearch {
         if (hits.isEmpty() && houseQuery != null) {
             val all = parseHouses(json, city, street, null)
             if (all.hits.isEmpty()) return Lookup(emptyList())
-            return Lookup(all.hits.take(HOUSE_LIMIT), "Такого дома нет. Показаны дома этой улицы.")
+            return Lookup(all.hits.take(HOUSE_LIMIT), L10n.houseMissing())
         }
-        val hint = if (hits.size > HOUSE_LIMIT) "Введите номер дома, чтобы сузить список." else null
+        val hint = if (hits.size > HOUSE_LIMIT) L10n.narrowByHouse() else null
         return Lookup(hits.take(HOUSE_LIMIT), hint)
     }
 
@@ -202,7 +202,7 @@ object AddressSearch {
         }
         val json = session.streets()
         val parsed = parseDirectory(json)
-        if (parsed.isEmpty()) error("Справочник адресов пуст")
+        if (parsed.isEmpty()) error(L10n.directoryEmpty())
         writeCache(cacheFile, json)
         directory = parsed
         directoryAt = now
@@ -331,15 +331,15 @@ object AddressSearch {
                 ensureToken()
                 answer = post(form, withToken = true)
             }
-            if (answer.code !in 200..299) error("ДТЕК ответил ${answer.code}")
-            if ("_Incapsula_Resource" in answer.body) error("ДТЕК временно закрыл справочник")
+            if (answer.code !in 200..299) error(L10n.dtekAnswered(answer.code))
+            if ("_Incapsula_Resource" in answer.body) error(L10n.dtekClosed())
             return answer.body
         }
 
         private fun ensureToken() {
             if (token != null) return
             post(mapOf("method" to "getStreets"), withToken = false)
-            if (token == null) error("ДТЕК не выдал ключ запроса")
+            if (token == null) error(L10n.dtekNoKey())
         }
 
         private fun post(form: Map<String, String>, withToken: Boolean): Answer {
@@ -361,7 +361,7 @@ object AddressSearch {
                 if (cookies.isNotEmpty()) {
                     setRequestProperty("Cookie", cookies.entries.joinToString("; ") { "${it.key}=${it.value}" })
                 }
-                if (withToken) setRequestProperty("X-CSRF-Token", maskToken(token ?: error("Нет ключа запроса")))
+                if (withToken) setRequestProperty("X-CSRF-Token", maskToken(token ?: error(L10n.noRequestKey())))
             }
             try {
                 connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }

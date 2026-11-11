@@ -2,15 +2,23 @@ package ua.`in`.vyshgorod.svitlo.desktop
 
 import org.json.JSONArray
 import org.json.JSONObject
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
 import ua.`in`.vyshgorod.svitlo.data.SnapshotJson
 import java.io.File
 
-enum class ThemeMode(val stored: String, val title: String) {
-    System("system", "Система"),
-    Light("light", "Светлая"),
-    Dark("dark", "Тёмная");
+enum class ThemeMode(val stored: String) {
+    System("system"),
+    Light("light"),
+    Dark("dark");
+
+    val title: String
+        get() = when (this) {
+            System -> L10n.themeSystem()
+            Light -> L10n.themeLight()
+            Dark -> L10n.themeDark()
+        }
 
     companion object {
         fun from(value: String?) = entries.firstOrNull { it.stored == value } ?: System

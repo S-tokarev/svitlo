@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
 import ua.`in`.vyshgorod.svitlo.data.AddressSearch
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.PowerPicture
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
 import ua.`in`.vyshgorod.svitlo.data.Selection
@@ -72,7 +73,7 @@ class DesktopModel {
                 now = System.currentTimeMillis()
                 checkAlerts()
             }.onFailure {
-                error = it.message ?: "Не удалось обновить график"
+                error = it.message ?: L10n.updateFailed()
             }
         }
     }
@@ -98,7 +99,7 @@ class DesktopModel {
     fun search() {
         val text = query.trim()
         if (text.length < 2) {
-            hint = "Введите хотя бы две буквы"
+            hint = L10n.typeTwoLettersDesktop()
             hits = emptyList()
             return
         }
@@ -165,7 +166,7 @@ class DesktopModel {
 
     private fun download(): Snapshot {
         val parsed = SvitloParser.parse(SvitloClient.fetchPage())
-        if (parsed.days.isEmpty()) error("Сайт отдал страницу без графика")
+        if (parsed.days.isEmpty()) error(L10n.emptySchedule())
         val next = Snapshot(
             fetchedAt = System.currentTimeMillis(),
             days = parsed.days,
@@ -180,7 +181,7 @@ class DesktopModel {
                 if (!ScheduleMath.scheduleChanged(previous, next, place.group, next.fetchedAt)) return@forEach
                 val key = "plan:${place.placeKey}:" + ScheduleMath.planStamp(next, place.group)
                 if (DesktopStore.markNotified(key)) {
-                    onNotify("График изменился", details(place, "расписание на сайте обновили"))
+                    onNotify(L10n.scheduleChanged(), details(place, L10n.scheduleChangedTail()))
                 }
             }
         }
@@ -195,13 +196,13 @@ class DesktopModel {
 
     fun tooltip(): String {
         val items = watched()
-        if (items.isEmpty() || snapshot == null) return "График света"
+        if (items.isEmpty() || snapshot == null) return L10n.appTitle()
         return items.joinToString(" · ") { place ->
             val on = ScheduleMath.picture(snapshot!!, place, now).displayOn
             val name = place.placeLabel ?: place.group
             val state = when (on) {
-                true -> "свет"
-                false -> "нет"
+                true -> L10n.lightWord()
+                false -> L10n.offWord()
                 null -> "?"
             }
             "$name $state"
@@ -216,8 +217,7 @@ class DesktopModel {
             val due = current.dueWarnOffAt
             if (!silent && warn && due != null && DesktopStore.markNotified("warn:${place.placeKey}:$due")) {
                 val minutes = ((due - now) / 60_000L).toInt().coerceAtLeast(0)
-                val title = if (minutes <= 1) "Свет выключат с минуты на минуту" else "Свет выключат через $minutes мин"
-                onNotify(title, details(place, "по графику отключение в ${ScheduleMath.formatDayTime(due, now)}"))
+                onNotify(L10n.warnTitle(minutes), details(place, L10n.offDetail(ScheduleMath.formatDayTime(due, now))))
             }
             val display = current.displayOn
             val previous = DesktopStore.lastDisplayOn(place.placeKey)
@@ -225,7 +225,7 @@ class DesktopModel {
                 val near = current.appearAts.firstOrNull { kotlin.math.abs(it - now) < 30 * 60 * 1000L }
                 val key = if (near != null) "appear:${place.placeKey}:$near" else "appear-live:${place.placeKey}:${now / 600_000L}"
                 if (DesktopStore.markNotified(key)) {
-                    onNotify("По графику свет включили", details(place, "по графику свет есть"))
+                    onNotify(L10n.powerReturned(), details(place, L10n.powerOnTail()))
                 }
             }
             if (display != null) DesktopStore.setLastDisplayOn(place.placeKey, display)
@@ -233,15 +233,6 @@ class DesktopModel {
     }
 
     private fun details(place: Selection, tail: String): String {
-        return buildString {
-            append("Группа ")
-            append(place.group)
-            place.placeLabel?.let {
-                append(" · ")
-                append(it)
-            }
-            append(" · ")
-            append(tail)
-        }
+        return L10n.notice(place.group, place.placeLabel, tail)
     }
 }

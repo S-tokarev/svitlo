@@ -51,9 +51,9 @@ enum AddressMatch {
         if hits.isEmpty, houseQuery != nil {
             let all = parseHouses(json, city: city, street: street, houseQuery: nil)
             if all.hits.isEmpty { return AddressLookup(hits: [], hint: nil) }
-            return AddressLookup(hits: Array(all.hits.prefix(houseLimit)), hint: "Такого дома нет. Показаны дома этой улицы.")
+            return AddressLookup(hits: Array(all.hits.prefix(houseLimit)), hint: Copy.houseMissing())
         }
-        let hint = hits.count > houseLimit ? "Введите номер дома, чтобы сузить список." : nil
+        let hint = hits.count > houseLimit ? Copy.narrowByHouse() : nil
         return AddressLookup(hits: Array(hits.prefix(houseLimit)), hint: hint)
     }
 
@@ -280,7 +280,7 @@ actor AddressDirectory {
 
     func search(_ query: String) async throws -> AddressLookup {
         let parsed = AddressMatch.parseQuery(query)
-        if parsed.tokens.isEmpty { throw SvitloError.message("Введите название улицы") }
+        if parsed.tokens.isEmpty { throw SvitloError.message(Copy.typeStreet()) }
         let streets = try await loadDirectory()
         let found = AddressMatch.matchStreets(streets, parsed)
         if found.streets.isEmpty { return AddressLookup(hits: [], hint: nil) }
@@ -303,7 +303,7 @@ actor AddressDirectory {
         }
         return AddressLookup(
             hits: found.streets.map { AddressHit(city: $0.city, street: $0.street, house: "", group: "") },
-            hint: found.truncated ? "Много улиц. Добавьте населённый пункт." : nil
+            hint: found.truncated ? Copy.manyStreets() : nil
         )
     }
 
@@ -335,7 +335,7 @@ actor AddressDirectory {
         }
         let json = try await call(form([("method", "getStreets")]))
         let parsed = AddressMatch.parseDirectory(json)
-        if parsed.isEmpty { throw SvitloError.message("Справочник адресов пуст") }
+        if parsed.isEmpty { throw SvitloError.message(Copy.directoryEmpty()) }
         try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? json.write(to: file, atomically: true, encoding: .utf8)
         directory = parsed
@@ -360,15 +360,15 @@ actor AddressDirectory {
             try await ensureToken()
             answer = try await post(body, withToken: true)
         }
-        guard (200...299).contains(answer.code) else { throw SvitloError.message("ДТЕК ответил \(answer.code)") }
-        if answer.body.contains("_Incapsula_Resource") { throw SvitloError.message("ДТЕК временно закрыл справочник") }
+        guard (200...299).contains(answer.code) else { throw SvitloError.message(Copy.dtekAnswered(answer.code)) }
+        if answer.body.contains("_Incapsula_Resource") { throw SvitloError.message(Copy.dtekClosed()) }
         return answer.body
     }
 
     private func ensureToken() async throws {
         if token != nil { return }
         _ = try await post(form([("method", "getStreets")]), withToken: false)
-        if token == nil { throw SvitloError.message("ДТЕК не выдал ключ запроса") }
+        if token == nil { throw SvitloError.message(Copy.dtekNoKey()) }
     }
 
     private func post(_ body: Data, withToken: Bool) async throws -> (code: Int, body: String) {
@@ -383,7 +383,7 @@ actor AddressDirectory {
         request.setValue("https://www.dtek-krem.com.ua/ua/shutdowns", forHTTPHeaderField: "Referer")
         if withToken, let token { request.setValue(AddressMatch.maskToken(token, mask: randomMask(count: token.utf8.count)), forHTTPHeaderField: "X-CSRF-Token") }
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw SvitloError.message("ДТЕК не ответил") }
+        guard let http = response as? HTTPURLResponse else { throw SvitloError.message(Copy.dtekSilent()) }
         absorbCookies(http)
         let text = String(data: data, encoding: .utf8) ?? ""
         return (http.statusCode, text)

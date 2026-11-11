@@ -16,6 +16,7 @@ import android.widget.RemoteViews
 import ua.`in`.vyshgorod.svitlo.MainActivity
 import ua.`in`.vyshgorod.svitlo.R
 import ua.`in`.vyshgorod.svitlo.alert.AlarmScheduler
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
 import ua.`in`.vyshgorod.svitlo.data.SvitloStore
@@ -70,51 +71,51 @@ class SvitloWidget : AppWidgetProvider() {
 
             if (selection.group.isBlank() || snapshot == null) {
                 paint(views, R.drawable.widget_bg, 0xFFF6F1E7.toInt(), 0xFFF6F1E7.toInt(), 0xFFB6AB9C.toInt())
-                views.setTextViewText(R.id.widget_kicker, "График света")
-                views.setTextViewText(R.id.widget_status, "Выберите группу")
-                views.setTextViewText(R.id.widget_next, "Откройте приложение")
+                views.setTextViewText(R.id.widget_kicker, L10n.appTitle())
+                views.setTextViewText(R.id.widget_status, L10n.chooseGroup())
+                views.setTextViewText(R.id.widget_next, L10n.openApp())
                 views.setTextViewText(R.id.widget_updated, "vyshgorod.in.ua/svitlo")
             } else {
                 val now = System.currentTimeMillis()
                 val picture = ScheduleMath.picture(snapshot, selection, now)
                 var scaleInk = 0xFF3D6B52.toInt()
                 val place = selection.placeLabel
-                val kicker = if (place.isNullOrBlank()) "Группа ${selection.group}" else place
+                val kicker = if (place.isNullOrBlank()) L10n.groupTitle(selection.group) else place
                 views.setTextViewText(R.id.widget_kicker, kicker)
                 when (picture.displayOn) {
                     true -> {
                         scaleInk = 0xFF143024.toInt()
                         paint(views, R.drawable.widget_bg_on, 0xFF0F6B38.toInt(), 0xFF143024.toInt(), 0xFF3D6B52.toInt())
-                        views.setTextViewText(R.id.widget_status, "Свет есть")
+                        views.setTextViewText(R.id.widget_status, L10n.powerOn())
                         val off = picture.nextOffAt
                         views.setTextViewText(
                             R.id.widget_next,
-                            if (off == null) "Отключений по графику нет"
-                            else "По графику выключат в ${ScheduleMath.formatDayTime(off, now)} · через ${ScheduleMath.formatDuration(off - now)}",
+                            if (off == null) L10n.noUpcomingOutage()
+                            else L10n.offAtIn(ScheduleMath.formatDayTime(off, now), ScheduleMath.formatDuration(off - now)),
                         )
                     }
                     false -> {
                         scaleInk = 0xFF3C120C.toInt()
                         paint(views, R.drawable.widget_bg_off, 0xFFA33E2C.toInt(), 0xFF3C120C.toInt(), 0xFF7A463C.toInt())
-                        views.setTextViewText(R.id.widget_status, "Света нет")
+                        views.setTextViewText(R.id.widget_status, L10n.powerOff())
                         val on = picture.nextOnAt
                         val until = picture.offUntil
                         views.setTextViewText(
                             R.id.widget_next,
                             when {
-                                on != null -> "По графику включат в ${ScheduleMath.formatDayTime(on, now)} · через ${ScheduleMath.formatDuration(on - now)}"
-                                until != null -> "Света нет до 24:00 · через ${ScheduleMath.formatDuration(until - now)}"
-                                else -> "Время включения неизвестно"
+                                on != null -> L10n.onAtIn(ScheduleMath.formatDayTime(on, now), ScheduleMath.formatDuration(on - now))
+                                until != null -> L10n.offUntil(ScheduleMath.formatDuration(until - now))
+                                else -> L10n.unknownOnTime()
                             },
                         )
                     }
                     null -> {
                         paint(views, R.drawable.widget_bg, 0xFFF6F1E7.toInt(), 0xFFF6F1E7.toInt(), 0xFFB6AB9C.toInt())
-                        views.setTextViewText(R.id.widget_status, "Нет данных")
-                        views.setTextViewText(R.id.widget_next, "Потяните обновление в приложении")
+                        views.setTextViewText(R.id.widget_status, L10n.noData())
+                        views.setTextViewText(R.id.widget_next, L10n.pullToRefresh())
                     }
                 }
-                val groupLine = "Группа ${selection.group} · обновлено ${ScheduleMath.formatDayTime(snapshot.fetchedAt, now)}"
+                val groupLine = L10n.widgetFooter(selection.group, ScheduleMath.formatDayTime(snapshot.fetchedAt, now))
                 views.setTextViewText(R.id.widget_updated, groupLine)
                 if (picture.displayOn != null) {
                     views.setViewVisibility(R.id.widget_scale, View.VISIBLE)

@@ -53,149 +53,6 @@ jobs:
           path: svitlo-android.apk
           if-no-files-found: error
 
-  ios:
-    name: iPhone
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Сборка для симулятора
-        run: |
-          xcodebuild \
-            -project ios/Svitlo.xcodeproj \
-            -scheme Svitlo \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
-            -configuration Debug \
-            -derivedDataPath ios/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build-for-testing
-
-      - name: Архив симулятора
-        run: |
-          cd ios/DerivedData/Build/Products/Debug-iphonesimulator
-          zip -r "$GITHUB_WORKSPACE/Svitlo-iphonesimulator.zip" Svitlo.app
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: svitlo-ios-simulator
-          path: Svitlo-iphonesimulator.zip
-          if-no-files-found: error
-
-  ios-device:
-    name: iPhone для телефона
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Есть ли сертификат Apple
-        id: sign
-        env:
-          CERT: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
-          WIDGET_PROFILE: ${{ secrets.APPLE_WIDGET_PROVISIONING_PROFILE }}
-          TEAM: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          if [ -n "$CERT" ] && [ -n "$PASSWORD" ] && [ -n "$PROFILE" ] && [ -n "$WIDGET_PROFILE" ] && [ -n "$TEAM" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Секреты Apple не заданы. Сборку для телефона пропускаю."
-          fi
-
-      - name: Подписать и собрать IPA
-        if: steps.sign.outputs.enabled == 'true'
-        env:
-          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_PROVISIONING_PROFILE: ${{ secrets.APPLE_PROVISIONING_PROFILE }}
-          APPLE_WIDGET_PROVISIONING_PROFILE: ${{ secrets.APPLE_WIDGET_PROVISIONING_PROFILE }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_EXPORT_METHOD: ${{ secrets.APPLE_EXPORT_METHOD }}
-        run: |
-          set -euo pipefail
-          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
-          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
-          identities="$(security find-identity -v -p codesigning "$KEYCHAIN")"
-          echo "$identities"
-          if printf '%s\n' "$identities" | grep -q "Apple Distribution"; then
-            identity="Apple Distribution"
-            method="${APPLE_EXPORT_METHOD:-ad-hoc}"
-          elif printf '%s\n' "$identities" | grep -q "Apple Development"; then
-            identity="Apple Development"
-            method="${APPLE_EXPORT_METHOD:-development}"
-          else
-            echo "В сертификате нет личности Apple Development или Apple Distribution."
-            exit 1
-          fi
-          install_profile() {
-            local encoded="$1"
-            local file="$2"
-            printf '%s' "$encoded" | base64 --decode > "$file"
-            local uuid name
-            uuid="$(security cms -D -i "$file" | plutil -extract UUID raw -)"
-            name="$(security cms -D -i "$file" | plutil -extract Name raw - | tr -d '\n')"
-            mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-            cp "$file" "$HOME/Library/MobileDevice/Provisioning Profiles/${uuid}.mobileprovision"
-            printf '%s' "$name"
-          }
-          app_profile="$(install_profile "$APPLE_PROVISIONING_PROFILE" "$RUNNER_TEMP/app.mobileprovision")"
-          widget_profile="$(install_profile "$APPLE_WIDGET_PROVISIONING_PROFILE" "$RUNNER_TEMP/widget.mobileprovision")"
-          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>${method}</string>
-            <key>teamID</key>
-            <string>${APPLE_TEAM_ID}</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>ua.in.vyshgorod.svitlo</key>
-              <string>${app_profile}</string>
-              <key>ua.in.vyshgorod.svitlo.widget</key>
-              <string>${widget_profile}</string>
-            </dict>
-          </dict>
-          </plist>
-          EOF
-          xcodebuild archive \
-            -project ios/Svitlo.xcodeproj \
-            -scheme Svitlo \
-            -destination "generic/platform=iOS" \
-            -archivePath "$RUNNER_TEMP/Svitlo.xcarchive" \
-            CODE_SIGN_STYLE=Manual \
-            "DEVELOPMENT_TEAM=${APPLE_TEAM_ID}" \
-            "CODE_SIGN_IDENTITY=${identity}" \
-            OTHER_CODE_SIGN_FLAGS="--keychain ${KEYCHAIN}"
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/Svitlo.xcarchive" \
-            -exportPath "$RUNNER_TEMP/ipa" \
-            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
-          cp "$RUNNER_TEMP/ipa/"*.ipa svitlo-iphone.ipa
-          security delete-keychain "$KEYCHAIN"
-
-      - uses: actions/upload-artifact@v4
-        if: steps.sign.outputs.enabled == 'true'
-        with:
-          name: svitlo-iphone
-          path: svitlo-iphone.ipa
-          if-no-files-found: error
-
   desktop-windows:
     name: Windows
     runs-on: windows-latest
@@ -224,66 +81,15 @@ jobs:
           path: svitlo-windows.zip
           if-no-files-found: error
 
-  desktop-macos:
-    name: Mac ${{ matrix.name }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest
-            name: Apple
-            artifact: svitlo-macos
-            arch: arm64
-            java-arch: aarch64
-          - runner: macos-15-intel
-            name: Intel
-            artifact: svitlo-macos-intel
-            arch: x86_64
-            java-arch: x64
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-          architecture: ${{ matrix.java-arch }}
-      - name: Собрать приложение
-        run: ./gradlew :desktop:createDistributable --stacktrace
-      - name: Проверить процессор
-        run: |
-          echo "uname=$(uname -m)"
-          test "$(uname -m)" = "${{ matrix.arch }}"
-          app="desktop/build/compose/binaries/main/app/Svitlo.app"
-          launcher="$app/Contents/MacOS/Svitlo"
-          echo "launcher=$(file "$launcher" || true)"
-          if file "$launcher" | grep -q "${{ matrix.arch }}"; then
-            exit 0
-          fi
-          macho="$(find "$app" -type f -exec file {} + | grep -m1 "${{ matrix.arch }}" || true)"
-          echo "macho=$macho"
-          test -n "$macho"
-      - name: Архив
-        run: ditto -c -k --keepParent desktop/build/compose/binaries/main/app/Svitlo.app "$GITHUB_WORKSPACE/${{ matrix.artifact }}.zip"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.zip
-          if-no-files-found: error
-
   release:
     name: Release
-    needs: [android, ios, ios-device, desktop-windows, desktop-macos]
+    needs: [android, desktop-windows]
     if: >-
       always() &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       needs.android.result == 'success' &&
-      needs.ios.result == 'success' &&
-      needs.desktop-windows.result == 'success' &&
-      needs.desktop-macos.result == 'success' &&
-      needs.ios-device.result != 'cancelled' &&
-      needs.ios-device.result != 'failure'
+      needs.desktop-windows.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -297,25 +103,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           apk="$(find dist -name 'svitlo-android.apk' -print -quit)"
-          ios="$(find dist -name 'Svitlo-iphonesimulator.zip' -print -quit)"
-          ipa="$(find dist -name 'svitlo-iphone.ipa' -print -quit || true)"
-          test -n "$apk" && test -n "$ios"
-          cp "$apk" svitlo-android.apk
-          cp "$ios" svitlo-iphonesimulator.zip
           windows="$(find dist -name 'svitlo-windows.zip' -print -quit)"
-          mac="$(find dist -name 'svitlo-macos.zip' -print -quit)"
-          mac_intel="$(find dist -name 'svitlo-macos-intel.zip' -print -quit)"
-          test -n "$windows" && test -n "$mac" && test -n "$mac_intel"
+          test -n "$apk" && test -n "$windows"
+          cp "$apk" svitlo-android.apk
           cp "$windows" svitlo-windows.zip
-          cp "$mac" svitlo-macos.zip
-          cp "$mac_intel" svitlo-macos-intel.zip
-          files=(svitlo-android.apk svitlo-iphonesimulator.zip svitlo-windows.zip svitlo-macos.zip svitlo-macos-intel.zip)
-          iphone_note="Сборки для iPhone нет: в GitHub не заданы секреты подписи Apple."
-          if [ -n "$ipa" ]; then
-            cp "$ipa" svitlo-iphone.ipa
-            files+=(svitlo-iphone.ipa)
-            iphone_note="svitlo-iphone.ipa — сборка для зарегистрированных устройств Apple."
-          fi
           gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
           gh release create latest \
             --repo "$GITHUB_REPOSITORY" \
@@ -326,8 +117,5 @@ jobs:
               "Сборка коммита ${GITHUB_SHA}." \
               "" \
               "svitlo-android.apk — сборка для телефона. Если старое Светло не обновляется, удалите его и установите этот файл: раньше каждая сборка GitHub была с новой подписью." \
-              "svitlo-iphonesimulator.zip — приложение для симулятора. На iPhone не ставится." \
-              "svitlo-windows.zip — Windows. svitlo-macos.zip — Mac с процессором Apple. svitlo-macos-intel.zip — Mac с процессором Intel." \
-              "На Intel-Mac файл svitlo-macos.zip не открывается. Закройте окно: программа останется в трее и пришлёт уведомления." \
-              "$iphone_note")" \
-            "${files[@]}"
+              "svitlo-windows.zip — Windows. Закройте окно: программа останется в трее и пришлёт уведомления.")" \
+            svitlo-android.apk svitlo-windows.zip

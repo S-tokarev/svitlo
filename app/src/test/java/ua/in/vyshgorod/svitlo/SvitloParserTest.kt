@@ -5,7 +5,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ua.`in`.vyshgorod.svitlo.data.AppLanguage
 import ua.`in`.vyshgorod.svitlo.data.DaySchedule
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
@@ -16,18 +18,20 @@ import java.time.LocalTime
 
 class SvitloParserTest {
     @Test
-    fun dayTitleStaysRussianWhenStoredLabelIsEnglish() {
+    fun dayTitleFollowsLanguageAndIgnoresStoredLabel() {
         val now = LocalDate.of(2026, 11, 10)
             .atTime(LocalTime.of(12, 0))
             .atZone(ScheduleMath.zone)
             .toInstant()
             .toEpochMilli()
-        val picture = ScheduleMath.picture(
-            snapshot(now, DaySchedule("today", "10 Nov", "10.11.2026", "", mapOf("2.1" to listOf(Outage(0, 240))))),
-            Selection("2.1"),
-            now,
-        )
-        assertEquals("10 ноября", picture.scheduleLabel)
+        val stored = snapshot(now, DaySchedule("today", "10 Nov", "10.11.2026", "", mapOf("2.1" to listOf(Outage(0, 240)))))
+        L10n.language = AppLanguage.Uk
+        assertEquals("10 листопада", ScheduleMath.picture(stored, Selection("2.1"), now).scheduleLabel)
+        L10n.language = AppLanguage.Ru
+        assertEquals("10 ноября", ScheduleMath.picture(stored, Selection("2.1"), now).scheduleLabel)
+        L10n.language = AppLanguage.En
+        assertEquals("10 November", ScheduleMath.picture(stored, Selection("2.1"), now).scheduleLabel)
+        L10n.language = AppLanguage.Uk
     }
 
     @Test
@@ -35,7 +39,7 @@ class SvitloParserTest {
         val page = SvitloParser.parse(page(today = true, tomorrow = true, live = true, house = true))
         val today = page.days.single { it.day == "today" }
         assertEquals("09.11.2026", today.updatedDate)
-        assertEquals("9 ноября", today.label)
+        assertEquals("9 листопада", today.label)
         assertEquals(
             listOf(Outage(0, 360), Outage(600, 990), Outage(1170, 1440)),
             today.groups["1.1"],
@@ -46,7 +50,7 @@ class SvitloParserTest {
         )
         assertEquals("08.11.2026 23:45", today.groupUpdated["1.1"])
         val tomorrow = page.days.single { it.day == "tomorrow" }
-        assertEquals("10 ноября", tomorrow.label)
+        assertEquals("10 листопада", tomorrow.label)
         assertEquals(listOf(Outage(0, 60)), tomorrow.groups["1.1"])
         assertFalse(page.tomorrowMissing)
         val live = page.live.single()
