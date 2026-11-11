@@ -24,6 +24,7 @@ enum AppStore {
     private static let notifyKey = "notify_on"
     private static let quietKey = "quiet_night"
     private static let themeKey = "theme"
+    private static let languageKey = "language"
 
     static func loadSelection() -> Selection {
         decode(Selection.self, key: selectionKey) ?? Selection()
@@ -78,6 +79,29 @@ enum AppStore {
 
     static func setThemeMode(_ mode: ThemeMode) {
         AppGroup.defaults.set(mode.rawValue, forKey: themeKey)
+    }
+
+    static func languageCode() -> String? {
+        AppGroup.defaults.string(forKey: languageKey)
+    }
+
+    static func resolvedLanguage() -> AppLanguage {
+        switch languageCode() {
+        case "uk": return .uk
+        case "ru": return .ru
+        case "en": return .en
+        default: return Copy.systemLanguage()
+        }
+    }
+
+    static func setLanguage(_ language: AppLanguage) {
+        let code: String
+        switch language {
+        case .uk: code = "uk"
+        case .ru: code = "ru"
+        case .en: code = "en"
+        }
+        AppGroup.defaults.set(code, forKey: languageKey)
     }
 
     private static func encode<T: Encodable>(_ value: T, key: String) {

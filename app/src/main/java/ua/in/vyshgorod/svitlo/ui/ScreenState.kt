@@ -1,6 +1,8 @@
 package ua.`in`.vyshgorod.svitlo.ui
 
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
+import ua.`in`.vyshgorod.svitlo.data.AppLanguage
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
 import ua.`in`.vyshgorod.svitlo.data.ThemeMode
@@ -19,6 +21,7 @@ data class ScreenState(
     val notifyOn: Boolean = true,
     val quietNight: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.System,
+    val language: AppLanguage = L10n.language,
     val notificationsGranted: Boolean = true,
     val batteryFree: Boolean = true,
 )

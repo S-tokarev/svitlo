@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ua.`in`.vyshgorod.svitlo.data.AppLanguage
 import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.PowerPicture
@@ -71,6 +72,7 @@ private val OffRedDark = Color(0xFFE87864)
 
 @Composable
 fun DesktopApp(model: DesktopModel) {
+    L10n.language = model.language
     val dark = when (model.theme) {
         ThemeMode.System -> isSystemInDarkTheme()
         ThemeMode.Light -> false
@@ -355,6 +357,27 @@ private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Colo
 @Composable
 private fun SettingsCard(model: DesktopModel, card: Color, ink: Color) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(card).padding(18.dp)) {
+        Text(L10n.languageSection(), color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                AppLanguage.Uk to "Українська",
+                AppLanguage.Ru to "Русский",
+                AppLanguage.En to "English",
+            ).forEach { (value, title) ->
+                val selected = model.language == value
+                Text(
+                    title,
+                    color = ink,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (selected) Accent.copy(alpha = 0.2f) else Color.Transparent)
+                        .clickable { model.updateLanguage(value) }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         Text(L10n.appearance(), color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -556,6 +579,7 @@ private fun compactDuration(minutes: Int): String = L10n.compact(minutes / 60, m
 
 @Composable
 fun DesktopWidget(model: DesktopModel) {
+    L10n.language = model.language
     val dark = when (model.theme) {
         ThemeMode.System -> isSystemInDarkTheme()
         ThemeMode.Light -> false

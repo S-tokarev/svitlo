@@ -72,7 +72,12 @@ final class AppModel: ObservableObject {
     @Published var notifyOn = AppStore.notifyWhenOn()
     @Published var quietNight = AppStore.quietNight()
     @Published var theme = AppStore.themeMode()
+    @Published var language = AppStore.resolvedLanguage()
     @Published var now = Date()
+
+    init() {
+        Copy.language = language
+    }
 
     private var clock: Task<Void, Never>?
 
@@ -208,6 +213,14 @@ final class AppModel: ObservableObject {
     func setTheme(_ mode: ThemeMode) {
         theme = mode
         AppStore.setThemeMode(mode)
+    }
+
+    func setLanguage(_ value: AppLanguage) {
+        Copy.language = value
+        language = value
+        AppStore.setLanguage(value)
+        Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     func applyExternalUpdate() {

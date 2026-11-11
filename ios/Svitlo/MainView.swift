@@ -13,6 +13,7 @@ struct MainView: View {
     }
 
     var body: some View {
+        let _ = model.language
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 header
@@ -176,6 +177,12 @@ struct MainView: View {
 
     private var appearance: some View {
         card {
+            Text(Copy.languageSection()).font(.headline).foregroundStyle(palette.ink)
+            HStack {
+                languageButton("Українська", .uk)
+                languageButton("Русский", .ru)
+                languageButton("English", .en)
+            }
             Text(Copy.appearance()).font(.headline).foregroundStyle(palette.ink)
             HStack {
                 ForEach(ThemeMode.allCases) { mode in
@@ -200,6 +207,16 @@ struct MainView: View {
                 .font(.caption)
                 .foregroundStyle(palette.muted)
         }
+    }
+
+    private func languageButton(_ title: String, _ value: AppLanguage) -> some View {
+        let selected = model.language == value
+        return Button(title) { model.setLanguage(value) }
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(selected ? palette.card2 : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(selected ? palette.ink : palette.muted)
     }
 
     private func toggle(_ title: String, _ value: Bool, _ set: @escaping (Bool) -> Void) -> some View {

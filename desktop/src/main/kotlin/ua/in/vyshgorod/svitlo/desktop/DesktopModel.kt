@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
 import ua.`in`.vyshgorod.svitlo.data.AddressSearch
+import ua.`in`.vyshgorod.svitlo.data.AppLanguage
 import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.PowerPicture
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
@@ -28,7 +29,13 @@ class DesktopModel {
     var warn by mutableStateOf(DesktopStore.warnEnabled())
     var notifyOn by mutableStateOf(DesktopStore.notifyWhenOn())
     var quiet by mutableStateOf(DesktopStore.quietNight())
+    var language by mutableStateOf(AppLanguage.Uk)
     var now by mutableStateOf(System.currentTimeMillis())
+
+    init {
+        L10n.applyCode(DesktopStore.languageCode())
+        language = L10n.language
+    }
     var loading by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var query by mutableStateOf("")
@@ -162,6 +169,12 @@ class DesktopModel {
     fun updateTheme(mode: ThemeMode) {
         theme = mode
         DesktopStore.setTheme(mode)
+    }
+
+    fun updateLanguage(value: AppLanguage) {
+        language = value
+        L10n.language = value
+        DesktopStore.setLanguage(value)
     }
 
     private fun download(): Snapshot {

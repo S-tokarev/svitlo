@@ -8,13 +8,23 @@ enum AppLanguage {
 }
 
 enum Copy {
-    static var language: AppLanguage = detect()
+    static var language: AppLanguage = systemLanguage()
 
-    private static func detect() -> AppLanguage {
+    static func systemLanguage() -> AppLanguage {
         let code = (Locale.preferredLanguages.first ?? Locale.current.identifier).lowercased()
         if code.hasPrefix("ru") { return .ru }
         if code.hasPrefix("en") { return .en }
         return .uk
+    }
+
+    /// Empty or unknown code keeps the system language, with Ukrainian as the fallback.
+    static func applyCode(_ code: String?) {
+        switch code {
+        case "uk": language = .uk
+        case "ru": language = .ru
+        case "en": language = .en
+        default: language = systemLanguage()
+        }
     }
 
     private static func t(_ uk: String, _ ru: String, _ en: String) -> String {
@@ -57,6 +67,7 @@ enum Copy {
     }
     static func search() -> String { t("Знайти групу", "Найти группу", "Find group") }
     static func searching() -> String { t("Шукаємо…", "Ищем…", "Searching…") }
+    static func languageSection() -> String { t("Мова", "Язык", "Language") }
     static func appearance() -> String { t("Оформлення", "Оформление", "Appearance") }
     static func themeSystem() -> String { t("Система", "Система", "System") }
     static func themeLight() -> String { t("Світла", "Светлая", "Light") }

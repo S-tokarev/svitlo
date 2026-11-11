@@ -71,6 +71,7 @@ fun main() {
                 delay(100)
             }
         }
+        L10n.language = model.language
         Tray(
             state = trayState,
             icon = icon,

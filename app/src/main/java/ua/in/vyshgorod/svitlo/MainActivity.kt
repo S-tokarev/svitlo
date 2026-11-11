@@ -26,8 +26,9 @@ import android.content.pm.PackageManager
 import ua.`in`.vyshgorod.svitlo.alert.AlarmScheduler
 import ua.`in`.vyshgorod.svitlo.alert.Notifier
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
-import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.AddressSearch
+import ua.`in`.vyshgorod.svitlo.data.AppLanguage
+import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.SvitloClient
 import ua.`in`.vyshgorod.svitlo.data.SvitloRepository
@@ -70,6 +71,7 @@ class MainActivity : ComponentActivity() {
                     onNotifyOn = ::setNotifyOn,
                     onQuietNight = ::setQuietNight,
                     onTheme = ::setTheme,
+                    onLanguage = ::setLanguage,
                     onRequestNotifications = ::requestNotifications,
                     onRequestBattery = ::requestBattery,
                     onOpenSource = {
@@ -108,6 +110,7 @@ class MainActivity : ComponentActivity() {
             notifyOn = store.notifyWhenOn(),
             quietNight = store.quietNight(),
             themeMode = store.themeMode(),
+            language = L10n.language,
             notificationsGranted = notificationsGranted(),
             batteryFree = batteryFree(),
         )
@@ -225,6 +228,14 @@ class MainActivity : ComponentActivity() {
     private fun setTheme(mode: ThemeMode) {
         SvitloStore(this).setThemeMode(mode)
         screen = screen.copy(themeMode = mode)
+    }
+
+    private fun setLanguage(language: AppLanguage) {
+        L10n.language = language
+        SvitloStore(this).setLanguage(language)
+        screen = screen.copy(language = language)
+        SvitloWidget.updateAll(this)
+        SvitloRepository.rescheduleFromCache(this)
     }
 
     private fun requestNotifications() {

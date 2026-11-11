@@ -7,6 +7,13 @@ enum class AppLanguage {
     Uk,
     Ru,
     En,
+    ;
+
+    fun code(): String = when (this) {
+        Uk -> "uk"
+        Ru -> "ru"
+        En -> "en"
+    }
 }
 
 object L10n {
@@ -18,6 +25,16 @@ object L10n {
             "ru" -> AppLanguage.Ru
             "en" -> AppLanguage.En
             else -> AppLanguage.Uk
+        }
+    }
+
+    /** Empty or unknown code keeps the system language, with Ukrainian as the fallback. */
+    fun applyCode(code: String?) {
+        language = when (code) {
+            "uk" -> AppLanguage.Uk
+            "ru" -> AppLanguage.Ru
+            "en" -> AppLanguage.En
+            else -> fromLocale(Locale.getDefault())
         }
     }
 
@@ -57,6 +74,7 @@ object L10n {
     fun search() = t("Знайти групу", "Найти группу", "Find group")
     fun searching() = t("Шукаємо…", "Ищем…", "Searching…")
     fun searchDesktop() = t("Знайти", "Найти", "Find")
+    fun languageSection() = t("Мова", "Язык", "Language")
     fun appearance() = t("Оформлення", "Оформление", "Appearance")
     fun themeSystem() = t("Система", "Система", "System")
     fun themeLight() = t("Світла", "Светлая", "Light")

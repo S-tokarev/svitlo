@@ -58,6 +58,7 @@ class SvitloWidget : AppWidgetProvider() {
         private fun updateOne(context: Context, manager: AppWidgetManager, id: Int) {
             val views = RemoteViews(context.packageName, R.layout.widget_svitlo)
             val store = SvitloStore(context)
+            L10n.applyCode(store.languageCode())
             val selection = store.loadSelection()
             val snapshot = store.loadSnapshot()
             val open = PendingIntent.getActivity(

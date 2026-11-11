@@ -32,6 +32,7 @@ struct Provider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetEntry>) -> Void) {
+        Copy.applyCode(AppStore.languageCode())
         let now = Date()
         var dates = (0..<120).map { now.addingTimeInterval(TimeInterval($0 * 60)) }
         if let snapshot = AppStore.loadSnapshot() {
@@ -47,6 +48,7 @@ struct Provider: TimelineProvider {
     }
 
     private func entry(at date: Date) -> WidgetEntry {
+        Copy.applyCode(AppStore.languageCode())
         let selection = AppStore.loadSelection()
         let snapshot = AppStore.loadSnapshot()
         guard !selection.group.isEmpty, let snapshot else {

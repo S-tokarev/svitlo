@@ -81,15 +81,37 @@ jobs:
           path: svitlo-windows.zip
           if-no-files-found: error
 
+  desktop-mac-intel:
+    name: Mac Intel
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Собрать приложение
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :desktop:createDistributable --stacktrace
+      - name: Архив
+        run: ditto -c -k --keepParent desktop/build/compose/binaries/main/app/Svitlo.app svitlo-mac-intel.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: svitlo-mac-intel
+          path: svitlo-mac-intel.zip
+          if-no-files-found: error
+
   release:
     name: Release
-    needs: [android, desktop-windows]
+    needs: [android, desktop-windows, desktop-mac-intel]
     if: >-
       always() &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       needs.android.result == 'success' &&
-      needs.desktop-windows.result == 'success'
+      needs.desktop-windows.result == 'success' &&
+      needs.desktop-mac-intel.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -104,9 +126,11 @@ jobs:
         run: |
           apk="$(find dist -name 'svitlo-android.apk' -print -quit)"
           windows="$(find dist -name 'svitlo-windows.zip' -print -quit)"
-          test -n "$apk" && test -n "$windows"
+          mac="$(find dist -name 'svitlo-mac-intel.zip' -print -quit)"
+          test -n "$apk" && test -n "$windows" && test -n "$mac"
           cp "$apk" svitlo-android.apk
           cp "$windows" svitlo-windows.zip
+          cp "$mac" svitlo-mac-intel.zip
           gh release delete latest --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
           gh release create latest \
             --repo "$GITHUB_REPOSITORY" \
@@ -117,5 +141,6 @@ jobs:
               "Сборка коммита ${GITHUB_SHA}." \
               "" \
               "svitlo-android.apk — сборка для телефона. Если старое Светло не обновляется, удалите его и установите этот файл: раньше каждая сборка GitHub была с новой подписью." \
-              "svitlo-windows.zip — Windows. Закройте окно: программа останется в трее и пришлёт уведомления.")" \
-            svitlo-android.apk svitlo-windows.zip
+              "svitlo-windows.zip — Windows. Закройте окно: программа останется в трее и пришлёт уведомления." \
+              "svitlo-mac-intel.zip — Mac с процессором Intel. Распакуйте архив и откройте Svitlo.app. На Mac с процессором Apple (M1 и новее) этот файл не запустится.")" \
+            svitlo-android.apk svitlo-windows.zip svitlo-mac-intel.zip

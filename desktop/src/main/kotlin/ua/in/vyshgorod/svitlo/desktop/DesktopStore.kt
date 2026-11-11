@@ -2,6 +2,7 @@ package ua.`in`.vyshgorod.svitlo.desktop
 
 import org.json.JSONArray
 import org.json.JSONObject
+import ua.`in`.vyshgorod.svitlo.data.AppLanguage
 import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
@@ -124,6 +125,10 @@ object DesktopStore {
     fun setNotify(value: Boolean) = put("notifyOn", value)
     fun setQuiet(value: Boolean) = put("quiet", value)
     fun setTheme(mode: ThemeMode) = put("theme", mode.stored)
+
+    fun languageCode(): String? = read().optString("language").ifBlank { null }
+
+    fun setLanguage(language: AppLanguage) = put("language", language.code())
 
     fun lastDisplayOn(placeKey: String): Boolean? {
         val json = read()

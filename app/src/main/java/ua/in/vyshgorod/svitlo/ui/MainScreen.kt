@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
+import ua.`in`.vyshgorod.svitlo.data.AppLanguage
 import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.PowerPicture
@@ -75,10 +76,12 @@ fun MainScreen(
     onNotifyOn: (Boolean) -> Unit,
     onQuietNight: (Boolean) -> Unit,
     onTheme: (ThemeMode) -> Unit,
+    onLanguage: (AppLanguage) -> Unit,
     onRequestNotifications: () -> Unit,
     onRequestBattery: () -> Unit,
     onOpenSource: () -> Unit,
 ) {
+    L10n.language = state.language
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -291,6 +294,20 @@ fun MainScreen(
 
         item {
             Panel {
+                SectionTitle(L10n.languageSection())
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeChoice("Українська", state.language == AppLanguage.Uk, Modifier.weight(1f)) {
+                        onLanguage(AppLanguage.Uk)
+                    }
+                    ThemeChoice("Русский", state.language == AppLanguage.Ru, Modifier.weight(1f)) {
+                        onLanguage(AppLanguage.Ru)
+                    }
+                    ThemeChoice("English", state.language == AppLanguage.En, Modifier.weight(1f)) {
+                        onLanguage(AppLanguage.En)
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
                 SectionTitle(L10n.appearance())
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
