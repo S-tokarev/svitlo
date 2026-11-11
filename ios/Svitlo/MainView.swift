@@ -96,7 +96,7 @@ struct MainView: View {
         }
         if let picture, !picture.outagesTomorrow.isEmpty {
             DayTrack(title: "Завтра", outages: picture.outagesTomorrow, nowMin: nil, palette: palette)
-        } else if model.snapshot?.days.contains(where: { $0.day == "tomorrow" && $0.groups[model.selection.group] != nil }) == true {
+        } else if let snapshot = model.snapshot, ScheduleMath.groupHasTomorrow(snapshot: snapshot, group: model.selection.group) {
             DayTrack(title: "Завтра", outages: [], nowMin: nil, palette: palette)
         }
     }

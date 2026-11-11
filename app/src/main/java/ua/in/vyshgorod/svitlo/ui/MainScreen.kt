@@ -89,10 +89,9 @@ fun MainScreen(
         ScheduleMath.picture(it, state.selection, now)
     }
     val groups = ScheduleMath.knownGroups(state.snapshot)
-    val tomorrowPublished = state.snapshot?.days
-        ?.firstOrNull { it.day == "tomorrow" }
-        ?.groups
-        ?.containsKey(state.selection.group) == true
+    val tomorrowPublished = state.snapshot?.let {
+        ScheduleMath.groupHasTomorrow(it, state.selection.group)
+    } == true
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(LocalSvitloColors.current.paper),

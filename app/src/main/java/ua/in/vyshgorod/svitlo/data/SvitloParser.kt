@@ -7,7 +7,8 @@ import kotlin.math.roundToInt
 
 /**
  * Reads https://vyshgorod.in.ua/svitlo.
- * The light SVGs draw today's and tomorrow's outages as gray bars.
+ * Each published day is drawn twice in the light theme: the "changes" chart
+ * and a plain copy of the same date. A later calendar date is tomorrow.
  * Group chips carry the live countdown. House rows carry sensor status.
  */
 object SvitloParser {
@@ -29,34 +30,48 @@ object SvitloParser {
     )
 
     fun parse(html: String): ParsedPage {
-        val charts = lightSvgs(html).mapIndexedNotNull { index, svg ->
-            parseChart(svg, if (index == 0) "today" else "tomorrow")
+        val chosen = linkedMapOf<LocalDate, ChartHit>()
+        for ((svg, mode) in lightCharts(html)) {
+            val schedule = parseChart(svg, "today") ?: continue
+            val date = runCatching { LocalDate.parse(schedule.updatedDate, dayDate) }.getOrNull() ?: continue
+            val current = chosen[date]
+            if (current == null || (current.mode != "changes" && mode == "changes")) {
+                chosen[date] = ChartHit(mode, schedule)
+            }
         }
-        val today = charts.firstOrNull { it.day == "today" }
-        if (today == null || today.groups.isEmpty()) return emptyPage()
-        val tomorrow = charts.firstOrNull { it.day == "tomorrow" }
+        val ordered = chosen.entries.sortedBy { it.key }.map { it.value.schedule }
+        val today = ordered.firstOrNull() ?: return emptyPage()
+        val tomorrow = ordered.getOrNull(1)
         return ParsedPage(
-            days = listOfNotNull(today, tomorrow),
+            days = listOfNotNull(today.copy(day = "today"), tomorrow?.copy(day = "tomorrow")),
             live = parseLive(html),
             houses = parseHouses(html),
             tomorrowMissing = tomorrow == null,
         )
     }
 
-    private fun lightSvgs(html: String): List<String> {
+    private data class ChartHit(val mode: String, val schedule: DaySchedule)
+
+    /** Light charts only. The site draws up to two days, and each day twice. */
+    private fun lightCharts(html: String): List<Pair<String, String>> {
         val marker = "<div class=\"sg-svg sg-svg-light\">"
-        val result = mutableListOf<String>()
+        val result = mutableListOf<Pair<String, String>>()
         var from = 0
-        while (result.size < 2) {
+        while (result.size < 8) {
             val start = html.indexOf(marker, from)
             if (start < 0) break
             val svgStart = html.indexOf("<svg", start)
-            val svgEnd = html.indexOf("</svg></div>", svgStart)
+            val svgEnd = html.indexOf("</svg></div>", if (svgStart < 0) start else svgStart)
             if (svgStart < 0 || svgEnd < 0) break
-            result += html.substring(svgStart, svgEnd + "</svg>".length)
+            result += html.substring(svgStart, svgEnd + "</svg>".length) to modeBefore(html, start)
             from = svgEnd + "</svg></div>".length
         }
         return result
+    }
+
+    private fun modeBefore(html: String, start: Int): String {
+        val window = html.substring((start - 500).coerceAtLeast(0), start)
+        return Regex("""data-mode="([^"]+)"""").findAll(window).lastOrNull()?.groupValues?.get(1).orEmpty()
     }
 
     private fun parseChart(svg: String, day: String): DaySchedule? {

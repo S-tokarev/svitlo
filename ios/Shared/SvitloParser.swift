@@ -8,32 +8,57 @@ enum SvitloParser {
     ]
 
     static func parse(html: String) -> ParsedPage {
-        let charts = lightSvgs(html).enumerated().compactMap { index, svg in
-            parseChart(svg, day: index == 0 ? "today" : "tomorrow")
+        var chosen: [String: (date: Date, mode: String, schedule: DaySchedule)] = [:]
+        for item in lightCharts(html) {
+            guard let schedule = parseChart(item.svg, day: "today"),
+                  let date = parseDay(schedule.updatedDate) else { continue }
+            let key = schedule.updatedDate
+            if let current = chosen[key] {
+                if current.mode != "changes" && item.mode == "changes" {
+                    chosen[key] = (date, item.mode, schedule)
+                }
+            } else {
+                chosen[key] = (date, item.mode, schedule)
+            }
         }
-        guard let today = charts.first(where: { $0.day == "today" }), !today.groups.isEmpty else { return emptyPage() }
-        let tomorrow = charts.first { $0.day == "tomorrow" }
+        let ordered = chosen.values.sorted { $0.date < $1.date }
+        guard let todayHit = ordered.first, !todayHit.schedule.groups.isEmpty else { return emptyPage() }
+        var today = todayHit.schedule
+        today.day = "today"
+        var days = [today]
+        if ordered.count > 1 {
+            var tomorrow = ordered[1].schedule
+            tomorrow.day = "tomorrow"
+            days.append(tomorrow)
+        }
         return ParsedPage(
-            days: [today, tomorrow].compactMap { $0 },
+            days: days,
             live: parseLive(html),
             houses: parseHouses(html),
-            tomorrowMissing: tomorrow == nil,
+            tomorrowMissing: ordered.count < 2,
             note: ""
         )
     }
 
-    private static func lightSvgs(_ html: String) -> [String] {
+    /// Light charts only. The site draws up to two days, and each day twice.
+    private static func lightCharts(_ html: String) -> [(svg: String, mode: String)] {
         let marker = "<div class=\"sg-svg sg-svg-light\">"
-        var result: [String] = []
+        var result: [(svg: String, mode: String)] = []
         var from = html.startIndex
-        while result.count < 2, let start = html.range(of: marker, range: from..<html.endIndex) {
+        while result.count < 8, let start = html.range(of: marker, range: from..<html.endIndex) {
             guard let svgStart = html.range(of: "<svg", range: start.lowerBound..<html.endIndex),
                   let svgEnd = html.range(of: "</svg></div>", range: svgStart.lowerBound..<html.endIndex) else { break }
             let close = html.index(svgEnd.lowerBound, offsetBy: "</svg>".count)
-            result.append(String(html[svgStart.lowerBound..<close]))
+            result.append((String(html[svgStart.lowerBound..<close]), modeBefore(html, start.lowerBound)))
             from = svgEnd.upperBound
         }
         return result
+    }
+
+    private static func modeBefore(_ html: String, _ start: String.Index) -> String {
+        let windowStart = html.index(start, offsetBy: -500, limitedBy: html.startIndex) ?? html.startIndex
+        let window = String(html[windowStart..<start])
+        return captures(#"data-mode="([^"]+)""#, in: window).last?.dropFirst().first ?? ""
     }
 
     private static func parseChart(_ svg: String, day: String) -> DaySchedule? {

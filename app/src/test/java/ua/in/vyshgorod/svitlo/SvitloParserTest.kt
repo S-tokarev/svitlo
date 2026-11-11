@@ -62,6 +62,65 @@ class SvitloParserTest {
     }
 
     @Test
+    fun plainCopyOfTheSameDayIsNotTomorrow() {
+        val changes = chart("середа, 11 листопада", "2.1" to listOf(Outage(240, 630), Outage(870, 1320)))
+        val plain = chart("середа, 11 листопада", "2.1" to listOf(Outage(0, 60)))
+        val page = SvitloParser.parse(
+            """<div data-mode="plain">$plain</div><div data-mode="changes">$changes</div>""",
+        )
+        assertTrue(page.tomorrowMissing)
+        assertEquals(listOf("today"), page.days.map { it.day })
+        assertEquals("11.11.2026", page.days.single().updatedDate)
+        assertEquals(listOf(Outage(240, 630), Outage(870, 1320)), page.days.single().groups["2.1"])
+    }
+
+    @Test
+    fun laterDayStaysTomorrowWhenAPlainCopySitsBetween() {
+        val page = SvitloParser.parse(
+            buildString {
+                append("""<div data-mode="changes">""")
+                append(chart("середа, 11 листопада", "1.1" to TODAY_11))
+                append("""</div><div data-mode="plain">""")
+                append(chart("середа, 11 листопада", "1.1" to listOf(Outage(0, 30))))
+                append("""</div><div data-mode="changes">""")
+                append(chart("четвер, 12 листопада", "1.1" to listOf(Outage(0, 60))))
+                append("""</div><div data-mode="plain">""")
+                append(chart("четвер, 12 листопада", "1.1" to listOf(Outage(0, 90))))
+                append("</div>")
+            },
+        )
+        assertFalse(page.tomorrowMissing)
+        val today = page.days.single { it.day == "today" }
+        val tomorrow = page.days.single { it.day == "tomorrow" }
+        assertEquals("11.11.2026", today.updatedDate)
+        assertEquals(TODAY_11, today.groups["1.1"])
+        assertEquals("12.11.2026", tomorrow.updatedDate)
+        assertEquals(listOf(Outage(0, 60)), tomorrow.groups["1.1"])
+    }
+
+    @Test
+    fun sameDateLabeledTomorrowIsHidden() {
+        val now = LocalDate.of(2026, 11, 11).atTime(15, 0).atZone(ScheduleMath.zone).toInstant().toEpochMilli()
+        val outages = listOf(Outage(240, 630), Outage(870, 1320))
+        val picture = ScheduleMath.picture(
+            snapshot(
+                now,
+                DaySchedule("today", "11 ноября", "11.11.2026", "", mapOf("2.1" to outages)),
+                DaySchedule("tomorrow", "11 ноября", "11.11.2026", "", mapOf("2.1" to outages)),
+            ),
+            Selection("2.1"),
+            now,
+        )
+        assertTrue(picture.outagesTomorrow.isEmpty())
+        assertEquals(outages, picture.outagesToday)
+        assertFalse(ScheduleMath.groupHasTomorrow(snapshot(
+            now,
+            DaySchedule("today", "11 ноября", "11.11.2026", "", mapOf("2.1" to outages)),
+            DaySchedule("tomorrow", "11 ноября", "11.11.2026", "", mapOf("2.1" to outages)),
+        ), "2.1"))
+    }
+
+    @Test
     fun emptyPageDoesNotInventASchedule() {
         val page = SvitloParser.parse("<html>challenge</html>")
         assertTrue(page.days.isEmpty())

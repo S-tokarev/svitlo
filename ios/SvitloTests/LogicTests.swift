@@ -27,6 +27,42 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(page.houses.first?.powerOn, false)
     }
 
+    func testPlainCopyOfTheSameDayIsNotTomorrow() {
+        let changes = chart("середа, 11 листопада", rows: [("2.1", [Outage(startMin: 240, endMin: 630)])])
+        let plain = chart("середа, 11 листопада", rows: [("2.1", [Outage(startMin: 0, endMin: 60)])])
+        let page = SvitloParser.parse(html: #"<div data-mode="plain">\#(plain)</div><div data-mode="changes">\#(changes)</div>"#)
+        XCTAssertTrue(page.tomorrowMissing)
+        XCTAssertEqual(page.days.map(\.day), ["today"])
+        XCTAssertEqual(page.days.first?.updatedDate, "11.11.2026")
+        XCTAssertEqual(page.days.first?.groups["2.1"], [Outage(startMin: 240, endMin: 630)])
+    }
+
+    func testLaterDayStaysTomorrowWhenAPlainCopySitsBetween() {
+        let todayChanges = chart("середа, 11 листопада", rows: [("1.1", [Outage(startMin: 0, endMin: 360)])])
+        let todayPlain = chart("середа, 11 листопада", rows: [("1.1", [Outage(startMin: 0, endMin: 30)])])
+        let tomorrowChanges = chart("четвер, 12 листопада", rows: [("1.1", [Outage(startMin: 0, endMin: 60)])])
+        let tomorrowPlain = chart("четвер, 12 листопада", rows: [("1.1", [Outage(startMin: 0, endMin: 90)])])
+        let html = #"<div data-mode="changes">\#(todayChanges)</div><div data-mode="plain">\#(todayPlain)</div><div data-mode="changes">\#(tomorrowChanges)</div><div data-mode="plain">\#(tomorrowPlain)</div>"#
+        let page = SvitloParser.parse(html: html)
+        XCTAssertFalse(page.tomorrowMissing)
+        XCTAssertEqual(page.days.first { $0.day == "today" }?.groups["1.1"], [Outage(startMin: 0, endMin: 360)])
+        XCTAssertEqual(page.days.first { $0.day == "tomorrow" }?.updatedDate, "12.11.2026")
+        XCTAssertEqual(page.days.first { $0.day == "tomorrow" }?.groups["1.1"], [Outage(startMin: 0, endMin: 60)])
+    }
+
+    func testSameDateLabeledTomorrowIsHidden() {
+        let now = kyiv(2026, 11, 11, 15, 0)
+        let outages = [Outage(startMin: 240, endMin: 630), Outage(startMin: 870, endMin: 1320)]
+        let stored = snapshot(now, days: [
+            DaySchedule(day: "today", label: "11 ноября", updatedDate: "11.11.2026", updatedTime: "", groups: ["2.1": outages], groupUpdated: [:]),
+            DaySchedule(day: "tomorrow", label: "11 ноября", updatedDate: "11.11.2026", updatedTime: "", groups: ["2.1": outages], groupUpdated: [:]),
+        ])
+        let picture = ScheduleMath.picture(snapshot: stored, selection: Selection(group: "2.1"), now: now)
+        XCTAssertEqual(picture.outagesTomorrow, [])
+        XCTAssertEqual(picture.outagesToday, outages)
+        XCTAssertFalse(ScheduleMath.groupHasTomorrow(snapshot: stored, group: "2.1"))
+    }
+
     func testEmptyPageDoesNotInventASchedule() {
         let page = SvitloParser.parse(html: "<html>challenge</html>")
         XCTAssertTrue(page.days.isEmpty)

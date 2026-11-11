@@ -68,7 +68,7 @@ object ScheduleMath {
 
     fun picture(snapshot: Snapshot, selection: Selection, now: Long): PowerPicture {
         val todaySchedule = snapshot.days.firstOrNull { it.day == "today" }
-        val tomorrowSchedule = snapshot.days.firstOrNull { it.day == "tomorrow" }
+        val tomorrowSchedule = nextDay(snapshot)
         val scheduleDate = todaySchedule?.updatedDate?.let(::parseDate)
         val group = selection.group
         val todayOutages = todaySchedule?.groups?.get(group).orEmpty()
@@ -211,6 +211,11 @@ object ScheduleMath {
         return "%02d:%02d".format(capped / 60, capped % 60)
     }
 
+    /** A chart labeled tomorrow counts only when its date is the next calendar day. */
+    fun groupHasTomorrow(snapshot: Snapshot, group: String): Boolean {
+        return nextDay(snapshot)?.groups?.containsKey(group) == true
+    }
+
     fun knownGroups(snapshot: Snapshot?): List<String> {
         val keys = linkedSetOf(
             "1.1", "1.2", "2.1", "2.2", "3.1", "3.2", "4.1", "4.2", "5.1", "5.2", "6.1", "6.2",
@@ -308,6 +313,13 @@ object ScheduleMath {
     private fun isDayBoundary(epochMs: Long): Boolean {
         val zoned = Instant.ofEpochMilli(epochMs).atZone(zone)
         return zoned.hour == 0 && zoned.minute == 0
+    }
+
+    private fun nextDay(snapshot: Snapshot): DaySchedule? {
+        val anchor = snapshot.days.firstOrNull { it.day == "today" }?.updatedDate?.let(::parseDate) ?: return null
+        val tomorrow = snapshot.days.firstOrNull { it.day == "tomorrow" } ?: return null
+        val date = parseDate(tomorrow.updatedDate) ?: return null
+        return tomorrow.takeIf { date == anchor.plusDays(1) }
     }
 
     private fun plans(snapshot: Snapshot, group: String): Map<String, List<Outage>> {

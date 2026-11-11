@@ -124,7 +124,10 @@ fun DesktopApp(model: DesktopModel) {
             )
         }
         val tomorrow = picture?.outagesTomorrow
-        if (picture != null && tomorrow != null && (tomorrow.isNotEmpty() || model.snapshot?.tomorrowMissing == false)) {
+        val tomorrowPublished = model.snapshot?.let {
+            ScheduleMath.groupHasTomorrow(it, model.selection.group)
+        } == true
+        if (picture != null && tomorrow != null && (tomorrow.isNotEmpty() || tomorrowPublished)) {
             DayCard("Завтра", tomorrow, null, card, ink, muted, onText, offText)
         }
         GroupCard(model, card, card2, ink, muted, onText, offText)

@@ -39,7 +39,7 @@ enum ScheduleMath {
 
     static func picture(snapshot: Snapshot, selection: Selection, now: Int64) -> PowerPicture {
         let todaySchedule = snapshot.days.first { $0.day == "today" }
-        let tomorrowSchedule = snapshot.days.first { $0.day == "tomorrow" }
+        let tomorrowSchedule = nextDay(snapshot)
         let scheduleDate = todaySchedule.flatMap { parseDate($0.updatedDate) }
         let group = selection.group
         let todayOutages = todaySchedule?.groups[group] ?? []
@@ -130,6 +130,11 @@ enum ScheduleMath {
             updatedLabel: updated,
             usingHouse: house != nil
         )
+    }
+
+    /// A chart labeled tomorrow counts only when its date is the next calendar day.
+    static func groupHasTomorrow(snapshot: Snapshot, group: String) -> Bool {
+        nextDay(snapshot)?.groups[group] != nil
     }
 
     static func knownGroups(_ snapshot: Snapshot?) -> [String] {
@@ -225,6 +230,14 @@ enum ScheduleMath {
             }
         }
         return merged
+    }
+
+    private static func nextDay(_ snapshot: Snapshot) -> DaySchedule? {
+        guard let anchor = snapshot.days.first(where: { $0.day == "today" }).flatMap({ parseDate($0.updatedDate) }),
+              let tomorrow = snapshot.days.first(where: { $0.day == "tomorrow" }),
+              let date = parseDate(tomorrow.updatedDate),
+              date == adding(days: 1, to: anchor) else { return nil }
+        return tomorrow
     }
 
     private static func isDayBoundary(_ epochMs: Int64) -> Bool {
