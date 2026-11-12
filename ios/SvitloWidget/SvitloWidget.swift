@@ -51,7 +51,7 @@ struct Provider: TimelineProvider {
         Copy.applyCode(AppStore.languageCode())
         let selection = AppStore.loadSelection()
         let snapshot = AppStore.loadSnapshot()
-        guard !selection.group.isEmpty, let snapshot else {
+        guard !selection.group.isEmpty, let snapshot, Regions.same(snapshot.region, AppStore.region()) else {
             return WidgetEntry(
                 date: date, background: Color(hex: 0x22201C), statusColor: Color(hex: 0xF6F1E7),
                 ink: Color(hex: 0xF6F1E7), muted: Color(hex: 0xB6AB9C),
@@ -63,7 +63,8 @@ struct Provider: TimelineProvider {
         let picture = ScheduleMath.picture(snapshot: snapshot, selection: selection, now: now)
         let place = selection.placeLabel
         let kicker = place ?? Copy.groupTitle(selection.group)
-        let footer = Copy.widgetFooter(selection.group, ScheduleMath.formatDayTime(snapshot.fetchedAt, now: now))
+        let groupLine = Copy.widgetFooter(selection.group, ScheduleMath.formatDayTime(snapshot.fetchedAt, now: now))
+        let footer = snapshot.source == AlertsEnergy.source ? "\(groupLine) · alerts.energy" : groupLine
         switch picture.displayOn {
         case true:
             let next: String

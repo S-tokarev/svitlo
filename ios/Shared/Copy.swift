@@ -49,6 +49,15 @@ enum Copy {
     static func noDataShort() -> String { t("немає даних", "нет данных", "no data") }
     static func groupMissing() -> String { t("Групу не вибрано", "Группа не выбрана", "No group selected") }
     static func groupSection() -> String { t("Група", "Группа", "Group") }
+    static func regionSection() -> String { t("Область", "Область", "Region") }
+    static func operatorSection() -> String { t("Оператор", "Оператор", "Operator") }
+    static func groupsSoon() -> String {
+        t(
+            "Оновіть графік, щоб побачити групи цієї області",
+            "Обновите график, чтобы увидеть группы этой области",
+            "Refresh the schedule to see this region's groups"
+        )
+    }
     static func addresses() -> String { t("Адреси", "Адреса", "Addresses") }
     static func addressesHint() -> String {
         t(
@@ -225,6 +234,30 @@ enum Copy {
         return "\(head) · \(tail)"
     }
     static func siteAnswered(_ code: Int) -> String { t("Сайт відповів \(code)", "Сайт ответил \(code)", "The site answered \(code)") }
+    static func bothSitesFailed() -> String {
+        t(
+            "Не вдалося взяти графік ні з vyshgorod.in.ua, ні з alerts.energy",
+            "Не удалось взять график ни с vyshgorod.in.ua, ни с alerts.energy",
+            "Could not load the schedule from vyshgorod.in.ua or alerts.energy"
+        )
+    }
+    static func fallbackCredit() -> String {
+        t(
+            "Графік з alerts.energy: основний сайт не відповів",
+            "График с alerts.energy: основной сайт не ответил",
+            "Schedule from alerts.energy: the main site did not respond"
+        )
+    }
+    static func alertsFailed() -> String {
+        t(
+            "Не вдалося взяти графік з alerts.energy",
+            "Не удалось взять график с alerts.energy",
+            "Could not load the schedule from alerts.energy"
+        )
+    }
+    static func alertsCredit() -> String {
+        t("Графік з alerts.energy", "График с alerts.energy", "Schedule from alerts.energy")
+    }
     static func dtekAnswered(_ code: Int) -> String { t("ДТЕК відповів \(code)", "ДТЕК ответил \(code)", "DTEK answered \(code)") }
     static func dtekClosed() -> String { t("ДТЕК тимчасово закрив довідник", "ДТЕК временно закрыл справочник", "DTEK temporarily closed the directory") }
     static func dtekNoKey() -> String { t("ДТЕК не видав ключ запиту", "ДТЕК не выдал ключ запроса", "DTEK did not issue a request key") }

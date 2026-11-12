@@ -63,6 +63,82 @@ final class LogicTests: XCTestCase {
         XCTAssertFalse(ScheduleMath.groupHasTomorrow(snapshot: stored, group: "2.1"))
     }
 
+    func testAlertsEnergyMapsDtekHoursAndIgnoresRailway() {
+        let railway = alertsRow(initiator: "kyivska_oblast_uz", queue: "1.1", today: Array(repeating: 1, count: 24), todayStatus: "ScheduleApplies")
+        let main = alertsRow(
+            queue: "1.1",
+            today: [1, 2, 3] + Array(repeating: 0, count: 21),
+            todayPossible: [0, 0, 2] + Array(repeating: 0, count: 21),
+            tomorrow: Array(repeating: 0, count: 24),
+            tomorrowStatus: "ScheduleApplies",
+            message: "За наказом НЕК Укренерго діють стабілізаційні відключення."
+        )
+        let clear = alertsRow(
+            queue: "1.2",
+            today: [],
+            todayStatus: "NoShutdowns",
+            todayPossible: [1] + Array(repeating: 0, count: 23),
+            tomorrow: [],
+            tomorrowStatus: "WaitingForSchedule",
+            message: "За наказом НЕК Укренерго діють стабілізаційні відключення."
+        )
+        let page = AlertsEnergy.parse(html: alertsPage([railway, main, clear].joined(separator: ",")))
+        let today = page.days.first { $0.day == "today" }
+        XCTAssertEqual(today?.updatedDate, "12.11.2026")
+        XCTAssertEqual(today?.label, "12 листопада")
+        XCTAssertEqual(today?.groups["1.1"], [Outage(startMin: 0, endMin: 90), Outage(startMin: 120, endMin: 180)])
+        XCTAssertEqual(today?.groups["1.2"], [Outage(startMin: 0, endMin: 60)])
+        XCTAssertEqual(today?.groupUpdated["1.1"], "11.11.2026 20:30")
+        let tomorrow = page.days.first { $0.day == "tomorrow" }
+        XCTAssertEqual(tomorrow?.groups["1.1"], [])
+        XCTAssertNil(tomorrow?.groups["1.2"])
+        XCTAssertFalse(page.tomorrowMissing)
+        XCTAssertEqual(page.source, AlertsEnergy.source)
+        XCTAssertEqual(page.note, "За наказом НЕК Укренерго діють стабілізаційні відключення.")
+        let waiting = AlertsEnergy.parse(html: alertsPage(alertsRow(queue: "4.2", today: [], todayStatus: "WaitingForSchedule")))
+        XCTAssertTrue(waiting.days.isEmpty)
+        XCTAssertEqual(waiting.source, "")
+    }
+
+    func testExplicitOperatorKeepsCityQueues() {
+        let rows = [
+            alertsRow(initiator: "city_dtek", queue: "1.1", today: Array(repeating: 1, count: 24)),
+            alertsRow(initiator: "city_other", queue: "60.1", today: [1] + Array(repeating: 0, count: 23)),
+            alertsRow(initiator: "city_other", queue: "10.1", today: [2] + Array(repeating: 0, count: 23)),
+            alertsRow(initiator: "city_uz", queue: "60.1", today: Array(repeating: 1, count: 24)),
+        ].joined(separator: ",")
+        let suppliers = #"""
+        {"supplierKey":"city_uz","supplierName":"Укрзалізниця","supplierType":"uz","priority":10},
+        {"supplierKey":"city_dtek","supplierName":"ДТЕК Київські електромережі","supplierType":"oblenergo","priority":20},
+        {"supplierKey":"city_other","supplierName":"Інша мережа","supplierType":"other","priority":5}
+        """#
+        let html = #"<script id="ng-state" type="application/json">{"suppliers":{"data":[\#(suppliers)]},"shutdowns":{"data":[\#(rows)]}}</script>"#
+        let chosen = AlertsEnergy.parse(html: html, operatorId: "city_other")
+        let today = chosen.days.first { $0.day == "today" }
+        XCTAssertEqual(today?.groups["10.1"], [Outage(startMin: 0, endMin: 30)])
+        XCTAssertEqual(today?.groups["60.1"], [Outage(startMin: 0, endMin: 60)])
+        XCTAssertNil(today?.groups["1.1"])
+        XCTAssertEqual(chosen.operatorId, "city_other")
+        XCTAssertEqual(chosen.operators.map(\.id), ["city_dtek", "city_other"])
+        let preferred = AlertsEnergy.parse(html: html)
+        XCTAssertEqual(preferred.operatorId, "city_dtek")
+        XCTAssertEqual(Array(preferred.days.first { $0.day == "today" }?.groups.keys ?? []).sorted(), ["1.1"])
+        XCTAssertTrue(AlertsEnergy.parse(html: html, operatorId: "missing").days.isEmpty)
+        let city = Snapshot(
+            fetchedAt: 0,
+            days: [DaySchedule(day: "today", label: "", updatedDate: "", updatedTime: "", groups: ["60.1": [], "10.1": [], "2.1": []], groupUpdated: [:])],
+            live: [],
+            houses: [],
+            tomorrowMissing: true,
+            note: "",
+            region: Regions.kyiv
+        )
+        XCTAssertEqual(ScheduleMath.knownGroups(city, region: Regions.kyiv), ["2.1", "10.1", "60.1"])
+        XCTAssertTrue(ScheduleMath.knownGroups(city, region: Regions.kyivOblast).isEmpty)
+        XCTAssertEqual(ScheduleMath.knownGroups(nil, region: Regions.kyivOblast).count, 12)
+        XCTAssertTrue(ScheduleMath.knownGroups(nil, region: Regions.kyiv).isEmpty)
+    }
+
     func testEmptyPageDoesNotInventASchedule() {
         let page = SvitloParser.parse(html: "<html>challenge</html>")
         XCTAssertTrue(page.days.isEmpty)
@@ -205,6 +281,29 @@ final class LogicTests: XCTestCase {
         let cookie = "25ab%3A2%3A%7Bi%3A0%3Bs%3A15%3A%22_csrf-dtek-krem%22%3Bi%3A1%3Bs%3A32%3A%22yOTG-jz1o4Y2vMdssuTULtIJJc0lGGZa%22%3B%7D"
         XCTAssertEqual(AddressMatch.csrfToken(cookie), "yOTG-jz1o4Y2vMdssuTULtIJJc0lGGZa")
         XCTAssertEqual(AddressMatch.maskToken("abc", mask: [1, 2, 3]).count, 8)
+    }
+
+    private func alertsPage(_ rows: String) -> String {
+        #"<script id="ng-state" type="application/json">{"shutdowns":{"data":[\#(rows)]}}</script>"#
+    }
+
+    private func alertsRow(
+        initiator: String = "kyivska_oblast_oblenergo",
+        queue: String,
+        today: [Int],
+        todayStatus: String = "ScheduleApplies",
+        todayPossible: [Int] = [],
+        tomorrow: [Int] = [],
+        tomorrowStatus: String = "WaitingForSchedule",
+        message: String = ""
+    ) -> String {
+        let announcements = message.isEmpty ? "[]" : #"[{"message":"\#(message)"}]"#
+        let todayJson = today.map(String.init).joined(separator: ",")
+        let tomorrowJson = tomorrow.map(String.init).joined(separator: ",")
+        let possibleJson = todayPossible.map(String.init).joined(separator: ",")
+        return """
+        {"initiator":"\(initiator)","queue":"\(queue)","updated":"2026-11-11T18:30:18.845Z","today":[\(todayJson)],"tomorrow":[\(tomorrowJson)],"todayStatus":"\(todayStatus)","tomorrowStatus":"\(tomorrowStatus)","todayDate":"2026-11-12","tomorrowDate":"2026-11-13","todayPossible":[\(possibleJson)],"todayAnnouncements":\(announcements)}
+        """
     }
 
     private func kyiv(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) -> Int64 {

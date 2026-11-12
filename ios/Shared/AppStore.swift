@@ -25,6 +25,8 @@ enum AppStore {
     private static let quietKey = "quiet_night"
     private static let themeKey = "theme"
     private static let languageKey = "language"
+    private static let regionKey = "region"
+    private static let operatorKey = "operator"
 
     static func loadSelection() -> Selection {
         decode(Selection.self, key: selectionKey) ?? Selection()
@@ -102,6 +104,22 @@ enum AppStore {
         case .en: code = "en"
         }
         AppGroup.defaults.set(code, forKey: languageKey)
+    }
+
+    static func region() -> String {
+        Regions.normalize(AppGroup.defaults.string(forKey: regionKey))
+    }
+
+    static func setRegion(_ slug: String) {
+        AppGroup.defaults.set(Regions.normalize(slug), forKey: regionKey)
+    }
+
+    static func operatorId() -> String {
+        AppGroup.defaults.string(forKey: operatorKey) ?? ""
+    }
+
+    static func setOperator(_ id: String) {
+        AppGroup.defaults.set(id, forKey: operatorKey)
     }
 
     private static func encode<T: Encodable>(_ value: T, key: String) {

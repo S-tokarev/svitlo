@@ -29,6 +29,10 @@ data class PowerPicture(
 )
 
 object ScheduleMath {
+    private val oblastGroups = listOf(
+        "1.1", "1.2", "2.1", "2.2", "3.1", "3.2", "4.1", "4.2", "5.1", "5.2", "6.1", "6.2",
+    )
+
     /**
      * Android 9 still has the pre-2022 id Europe/Kiev. Europe/Kyiv is the same zone, UTC+2.
      * A missing id used to kill the first frame, because this object loads with the screen.
@@ -210,14 +214,35 @@ object ScheduleMath {
         return nextDay(snapshot)?.groups?.containsKey(group) == true
     }
 
-    fun knownGroups(snapshot: Snapshot?): List<String> {
-        val keys = linkedSetOf(
-            "1.1", "1.2", "2.1", "2.2", "3.1", "3.2", "4.1", "4.2", "5.1", "5.2", "6.1", "6.2",
-        )
-        snapshot?.days?.forEach { keys += it.groups.keys }
-        snapshot?.live?.forEach { keys += it.id }
-        snapshot?.houses?.forEach { keys += it.group }
-        return keys.sortedWith(compareBy({ it.substringBefore('.').toIntOrNull() ?: 9 }, { it }))
+    fun knownGroups(snapshot: Snapshot?, region: String = Regions.KYIV_OBLAST): List<String> {
+        val selected = Regions.normalize(region)
+        val stored = when {
+            snapshot == null || snapshot.region.isBlank() -> Regions.KYIV_OBLAST
+            else -> Regions.normalize(snapshot.region)
+        }
+        val found = if (stored == selected) {
+            buildSet {
+                snapshot?.days?.forEach { addAll(it.groups.keys) }
+                snapshot?.live?.forEach { add(it.id) }
+                snapshot?.houses?.forEach { add(it.group) }
+            }
+        } else {
+            emptySet()
+        }
+        if (selected == Regions.KYIV_OBLAST && stored == selected) {
+            return sortedGroups(oblastGroups + found)
+        }
+        return sortedGroups(found)
+    }
+
+    fun sortedGroups(ids: Collection<String>): List<String> {
+        return ids.filter { it.isNotBlank() }.distinct().sortedWith(compareBy({ groupRank(it).first }, { groupRank(it).second }, { it }))
+    }
+
+    fun groupRank(id: String): Pair<Int, Int> {
+        val major = id.substringBefore('.').toIntOrNull() ?: 999
+        val minor = id.substringAfter('.', "").toIntOrNull() ?: 0
+        return major to minor
     }
 
     /**

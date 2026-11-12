@@ -61,6 +61,12 @@ struct Selection: Codable, Equatable {
     }
 }
 
+/// Household network operator inside one region. Railway groups are not listed.
+struct GridOperator: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+}
+
 struct Snapshot: Codable, Equatable {
     var fetchedAt: Int64
     var days: [DaySchedule]
@@ -68,6 +74,68 @@ struct Snapshot: Codable, Equatable {
     var houses: [HouseStatus]
     var tomorrowMissing: Bool
     var note: String
+    /// Empty when the schedule came from vyshgorod.in.ua. "alerts.energy" is the fallback.
+    var source: String
+    /// alerts.energy region slug. Blank means a schedule saved before the region picker.
+    var region: String
+    var operatorId: String
+    var operators: [GridOperator]
+
+    init(
+        fetchedAt: Int64,
+        days: [DaySchedule],
+        live: [LiveGroup],
+        houses: [HouseStatus],
+        tomorrowMissing: Bool,
+        note: String,
+        source: String = "",
+        region: String = "",
+        operatorId: String = "",
+        operators: [GridOperator] = []
+    ) {
+        self.fetchedAt = fetchedAt
+        self.days = days
+        self.live = live
+        self.houses = houses
+        self.tomorrowMissing = tomorrowMissing
+        self.note = note
+        self.source = source
+        self.region = region
+        self.operatorId = operatorId
+        self.operators = operators
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fetchedAt, days, live, houses, tomorrowMissing, note, source, region, operatorId, operators
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fetchedAt = try container.decode(Int64.self, forKey: .fetchedAt)
+        days = try container.decode([DaySchedule].self, forKey: .days)
+        live = try container.decode([LiveGroup].self, forKey: .live)
+        houses = try container.decode([HouseStatus].self, forKey: .houses)
+        tomorrowMissing = try container.decode(Bool.self, forKey: .tomorrowMissing)
+        note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        region = try container.decodeIfPresent(String.self, forKey: .region) ?? ""
+        operatorId = try container.decodeIfPresent(String.self, forKey: .operatorId) ?? ""
+        operators = try container.decodeIfPresent([GridOperator].self, forKey: .operators) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(fetchedAt, forKey: .fetchedAt)
+        try container.encode(days, forKey: .days)
+        try container.encode(live, forKey: .live)
+        try container.encode(houses, forKey: .houses)
+        try container.encode(tomorrowMissing, forKey: .tomorrowMissing)
+        try container.encode(note, forKey: .note)
+        try container.encode(source, forKey: .source)
+        try container.encode(region, forKey: .region)
+        try container.encode(operatorId, forKey: .operatorId)
+        try container.encode(operators, forKey: .operators)
+    }
 }
 
 struct ParsedPage: Equatable {
@@ -76,6 +144,10 @@ struct ParsedPage: Equatable {
     var houses: [HouseStatus]
     var tomorrowMissing: Bool
     var note: String
+    var source: String = ""
+    var region: String = ""
+    var operatorId: String = ""
+    var operators: [GridOperator] = []
 }
 
 struct PowerPicture: Equatable {

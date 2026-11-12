@@ -42,10 +42,9 @@ object SvitloRepository {
     private fun addressCache(context: Context): File = File(context.applicationContext.cacheDir, "dtek-streets.json")
 
     fun refreshBlocking(context: Context): Snapshot {
-        val parsed = SvitloParser.parse(SvitloClient.fetchPage())
-        if (parsed.days.isEmpty()) {
-            error(L10n.emptySchedule())
-        }
+        val app = context.applicationContext
+        val store = SvitloStore(app)
+        val parsed = ScheduleLoad.load(store.region(), store.operatorId())
         val snapshot = Snapshot(
             fetchedAt = System.currentTimeMillis(),
             days = parsed.days,
@@ -53,12 +52,14 @@ object SvitloRepository {
             houses = parsed.houses,
             tomorrowMissing = parsed.tomorrowMissing,
             note = parsed.note,
+            source = parsed.source,
+            region = parsed.region.ifBlank { store.region() },
+            operatorId = parsed.operatorId,
+            operators = parsed.operators,
         )
-        val app = context.applicationContext
-        val store = SvitloStore(app)
         val previous = store.loadSnapshot()
-        if (previous != null) {
-            watched(store).forEach { selection ->
+        if (previous != null && Regions.same(previous.region, snapshot.region)) {
+            alertPlaces(store, snapshot).forEach { selection ->
                 if (!ScheduleMath.scheduleChanged(previous, snapshot, selection.group, snapshot.fetchedAt)) return@forEach
                 val key = "plan:${selection.placeKey}:" + ScheduleMath.planStamp(snapshot, selection.group)
                 if (store.markNotified(key)) {
@@ -116,7 +117,7 @@ object SvitloRepository {
     }
 
     private fun evaluate(context: Context, store: SvitloStore, snapshot: Snapshot, announceTransitions: Boolean) {
-        val places = watched(store)
+        val places = alertPlaces(store, snapshot)
         if (places.isEmpty()) {
             AlarmScheduler.rescheduleAlerts(context, emptyList(), emptyList())
             return
@@ -153,6 +154,16 @@ object SvitloRepository {
             warns.sortedBy { it.at },
             appears.sortedBy { it.at },
         )
+    }
+
+    /** Saved streets belong to Kyiv oblast. Another region alerts only the chosen group. */
+    private fun alertPlaces(store: SvitloStore, snapshot: Snapshot): List<Selection> {
+        if (!Regions.same(snapshot.region, store.region())) return emptyList()
+        val focus = store.loadSelection()
+        if (store.region() != Regions.KYIV_OBLAST) {
+            return if (focus.group.isBlank()) emptyList() else listOf(focus.copy(street = null, house = null, city = null))
+        }
+        return watched(store)
     }
 
     private fun watched(store: SvitloStore): List<Selection> {

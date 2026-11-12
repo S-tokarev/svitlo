@@ -32,9 +32,10 @@ enum RefreshScheduler {
 
 enum ScheduleRefresh {
     static func run() async throws {
-        let html = try await SvitloClient.fetchPage()
-        let parsed = SvitloParser.parse(html: html)
-        guard !parsed.days.isEmpty else { throw SvitloError.message(Copy.emptySchedule()) }
+        let requestedRegion = AppStore.region()
+        let requestedOperator = AppStore.operatorId()
+        let parsed = try await ScheduleLoad.load(region: requestedRegion, operatorId: requestedOperator)
+        if !Regions.same(requestedRegion, AppStore.region()) || AppStore.operatorId() != requestedOperator { return }
         let previous = AppStore.loadSnapshot()
         let snapshot = Snapshot(
             fetchedAt: ScheduleMath.millis(Date()),
@@ -42,10 +43,14 @@ enum ScheduleRefresh {
             live: parsed.live,
             houses: parsed.houses,
             tomorrowMissing: parsed.tomorrowMissing,
-            note: parsed.note
+            note: parsed.note,
+            source: parsed.source,
+            region: parsed.region.isEmpty ? AppStore.region() : parsed.region,
+            operatorId: parsed.operatorId,
+            operators: parsed.operators
         )
-        if let previous {
-            for place in AppStore.watched() where !place.group.isEmpty &&
+        if let previous, Regions.same(previous.region, snapshot.region) {
+            for place in alertPlaces(snapshot) where !place.group.isEmpty &&
                 ScheduleMath.scheduleChanged(previous: previous, next: snapshot, group: place.group, now: snapshot.fetchedAt) {
                 Notifier.scheduleChanged(selection: place)
             }
@@ -54,6 +59,17 @@ enum ScheduleRefresh {
         Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
         WidgetCenter.shared.reloadAllTimelines()
         NotificationCenter.default.post(name: .svitloUpdated, object: nil)
+    }
+
+    /// Saved streets belong to Kyiv oblast. Another region alerts only the chosen group.
+    private static func alertPlaces(_ snapshot: Snapshot) -> [Selection] {
+        let region = AppStore.region()
+        guard Regions.same(snapshot.region, region) else { return [] }
+        let focus = AppStore.loadSelection()
+        if region != Regions.kyivOblast {
+            return focus.group.isEmpty ? [] : [Selection(group: focus.group)]
+        }
+        return AppStore.watched()
     }
 }
 
@@ -73,6 +89,8 @@ final class AppModel: ObservableObject {
     @Published var quietNight = AppStore.quietNight()
     @Published var theme = AppStore.themeMode()
     @Published var language = AppStore.resolvedLanguage()
+    @Published var region = AppStore.region()
+    @Published var operatorId = AppStore.operatorId()
     @Published var now = Date()
 
     init() {
@@ -221,6 +239,29 @@ final class AppModel: ObservableObject {
         AppStore.setLanguage(value)
         Notifier.reschedule(places: AppStore.watched(), snapshot: snapshot)
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    func setRegion(_ slug: String) {
+        let next = Regions.normalize(slug)
+        if next == region { return }
+        region = next
+        operatorId = ""
+        AppStore.setRegion(next)
+        AppStore.setOperator("")
+        selection = Selection(group: selection.group)
+        query = ""
+        results = []
+        searchError = nil
+        AppStore.savePlaces(places, focus: selection)
+        Task { await refresh() }
+    }
+
+    func setOperator(_ id: String) {
+        let current = operatorId.isEmpty ? (snapshot?.operatorId ?? "") : operatorId
+        if id == current { return }
+        operatorId = id
+        AppStore.setOperator(id)
+        Task { await refresh() }
     }
 
     func applyExternalUpdate() {

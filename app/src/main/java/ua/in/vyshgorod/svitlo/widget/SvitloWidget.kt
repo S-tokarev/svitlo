@@ -16,7 +16,9 @@ import android.widget.RemoteViews
 import ua.`in`.vyshgorod.svitlo.MainActivity
 import ua.`in`.vyshgorod.svitlo.R
 import ua.`in`.vyshgorod.svitlo.alert.AlarmScheduler
+import ua.`in`.vyshgorod.svitlo.data.AlertsEnergy
 import ua.`in`.vyshgorod.svitlo.data.L10n
+import ua.`in`.vyshgorod.svitlo.data.Regions
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
 import ua.`in`.vyshgorod.svitlo.data.SvitloStore
@@ -60,7 +62,7 @@ class SvitloWidget : AppWidgetProvider() {
             val store = SvitloStore(context)
             L10n.applyCode(store.languageCode())
             val selection = store.loadSelection()
-            val snapshot = store.loadSnapshot()
+            val snapshot = store.loadSnapshot()?.takeIf { Regions.same(it.region, store.region()) }
             val open = PendingIntent.getActivity(
                 context,
                 0,
@@ -117,7 +119,8 @@ class SvitloWidget : AppWidgetProvider() {
                     }
                 }
                 val groupLine = L10n.widgetFooter(selection.group, ScheduleMath.formatDayTime(snapshot.fetchedAt, now))
-                views.setTextViewText(R.id.widget_updated, groupLine)
+                val footer = if (snapshot.source == AlertsEnergy.SOURCE) "$groupLine · alerts.energy" else groupLine
+                views.setTextViewText(R.id.widget_updated, footer)
                 if (picture.displayOn != null) {
                     views.setViewVisibility(R.id.widget_scale, View.VISIBLE)
                     views.setImageViewBitmap(

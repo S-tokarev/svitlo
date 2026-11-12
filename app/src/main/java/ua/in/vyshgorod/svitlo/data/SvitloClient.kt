@@ -8,9 +8,15 @@ object SvitloClient {
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
 
-    fun pageFor(group: String): String = SCHEDULE
+    fun pageFor(group: String, source: String = "", region: String = Regions.KYIV_OBLAST): String {
+        val slug = Regions.normalize(region)
+        if (source == AlertsEnergy.SOURCE || slug != Regions.KYIV_OBLAST) return AlertsEnergy.page(slug)
+        return SCHEDULE
+    }
 
     fun fetchPage(): String = get(SCHEDULE, referer = "https://vyshgorod.in.ua/")
+
+    fun fetchAlerts(region: String): String = get(AlertsEnergy.page(region), referer = "https://alerts.energy/")
 
     private fun get(url: String, referer: String): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {

@@ -86,6 +86,18 @@ class SvitloStore(context: Context) {
         prefs.edit().putString(KEY_LANGUAGE, language.code()).commit()
     }
 
+    fun region(): String = Regions.normalize(prefs.getString(KEY_REGION, null))
+
+    fun setRegion(slug: String) {
+        prefs.edit().putString(KEY_REGION, Regions.normalize(slug)).commit()
+    }
+
+    fun operatorId(): String = prefs.getString(KEY_OPERATOR, "").orEmpty()
+
+    fun setOperator(id: String) {
+        prefs.edit().putString(KEY_OPERATOR, id).commit()
+    }
+
     /** null when this address has no baseline yet, so the first load does not look like a switch-on. */
     fun lastDisplayOn(placeKey: String): Boolean? {
         val map = lastMap()
@@ -130,6 +142,8 @@ class SvitloStore(context: Context) {
         private const val KEY_QUIET = "quiet_night"
         private const val KEY_THEME = "theme"
         private const val KEY_LANGUAGE = "language"
+        private const val KEY_REGION = "region"
+        private const val KEY_OPERATOR = "operator"
         private const val KEY_LAST_ON = "last_on"
         private const val KEY_LAST_MAP = "last_ons"
         private const val KEY_NOTIFIED = "notified"

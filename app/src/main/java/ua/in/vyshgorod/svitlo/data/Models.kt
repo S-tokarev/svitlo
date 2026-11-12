@@ -59,6 +59,12 @@ data class Selection(
         get() = listOf(group, city.orEmpty(), street.orEmpty(), house.orEmpty()).joinToString("\u001f")
 }
 
+/** Household network operator inside one region. Railway groups are not listed. */
+data class GridOperator(
+    val id: String,
+    val name: String,
+)
+
 data class Snapshot(
     val fetchedAt: Long,
     val days: List<DaySchedule>,
@@ -67,6 +73,12 @@ data class Snapshot(
     val tomorrowMissing: Boolean,
     /** Operator announcement. A local notice does not cancel a published plan. */
     val note: String = "",
+    /** Empty when the schedule came from vyshgorod.in.ua. "alerts.energy" is the fallback. */
+    val source: String = "",
+    /** alerts.energy region slug. Blank means a schedule saved before the region picker. */
+    val region: String = "",
+    val operatorId: String = "",
+    val operators: List<GridOperator> = emptyList(),
 )
 
 data class ParsedPage(
@@ -75,4 +87,8 @@ data class ParsedPage(
     val houses: List<HouseStatus>,
     val tomorrowMissing: Boolean,
     val note: String = "",
+    val source: String = "",
+    val region: String = "",
+    val operatorId: String = "",
+    val operators: List<GridOperator> = emptyList(),
 )

@@ -59,6 +59,13 @@ object L10n {
     fun noDataShort() = t("немає даних", "нет данных", "no data")
     fun groupMissing() = t("Групу не вибрано", "Группа не выбрана", "No group selected")
     fun groupSection() = t("Група", "Группа", "Group")
+    fun regionSection() = t("Область", "Область", "Region")
+    fun operatorSection() = t("Оператор", "Оператор", "Operator")
+    fun groupsSoon() = t(
+        "Оновіть графік, щоб побачити групи цієї області",
+        "Обновите график, чтобы увидеть группы этой области",
+        "Refresh the schedule to see this region's groups",
+    )
     fun addresses() = t("Адреси", "Адреса", "Addresses")
     fun addressesHint() = t(
         "Можна зберегти кілька. Адреса обирає групу.",
@@ -191,6 +198,26 @@ object L10n {
         "Сайт віддав сторінку без графіка",
         "Сайт отдал страницу без графика",
         "The site returned a page without a schedule",
+    )
+    fun bothSitesFailed() = t(
+        "Не вдалося взяти графік ні з vyshgorod.in.ua, ні з alerts.energy",
+        "Не удалось взять график ни с vyshgorod.in.ua, ни с alerts.energy",
+        "Could not load the schedule from vyshgorod.in.ua or alerts.energy",
+    )
+    fun alertsFailed() = t(
+        "Не вдалося взяти графік з alerts.energy",
+        "Не удалось взять график с alerts.energy",
+        "Could not load the schedule from alerts.energy",
+    )
+    fun fallbackCredit() = t(
+        "Графік з alerts.energy: основний сайт не відповів",
+        "График с alerts.energy: основной сайт не ответил",
+        "Schedule from alerts.energy: the main site did not respond",
+    )
+    fun alertsCredit() = t(
+        "Графік з alerts.energy",
+        "График с alerts.energy",
+        "Schedule from alerts.energy",
     )
     fun emptyPage() = t("Сайт віддав порожню сторінку", "Сайт отдал пустую страницу", "The site returned an empty page")
     fun windowMissing() = t("Вікно застосунку не знайдено", "Окно приложения не найдено", "App window was not found")

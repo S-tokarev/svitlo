@@ -4,11 +4,16 @@ struct MainView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
+    @State private var regionsOpen = false
 
     private var palette: SvitloPalette { SvitloPalette.resolve(model.theme, systemDark: colorScheme == .dark) }
     private var nowMs: Int64 { ScheduleMath.millis(model.now) }
+    private var chart: Snapshot? {
+        guard let snapshot = model.snapshot, Regions.same(snapshot.region, model.region) else { return nil }
+        return snapshot
+    }
     private var picture: PowerPicture? {
-        guard let snapshot = model.snapshot, !model.selection.group.isEmpty else { return nil }
+        guard let snapshot = chart, !model.selection.group.isEmpty else { return nil }
         return ScheduleMath.picture(snapshot: snapshot, selection: model.selection, now: nowMs)
     }
 
@@ -18,14 +23,21 @@ struct MainView: View {
             VStack(alignment: .leading, spacing: 12) {
                 header
                 statusCard
-                if let note = model.snapshot?.note, !note.isEmpty { noteCard(note) }
+                if let note = chart?.note, !note.isEmpty { noteCard(note) }
                 if let error = model.error { errorCard(error) }
                 schedule
                 groups
-                address
+                if model.region == Regions.kyivOblast { address }
                 appearance
                 notifications
-                Button(Copy.openScheduleShort()) { openURL(SvitloClient.page(for: model.selection.group)) }
+                if let credit = scheduleCredit(chart, model.region) {
+                    Text(credit)
+                        .font(.caption)
+                        .foregroundStyle(palette.muted)
+                }
+                Button(Copy.openScheduleShort()) {
+                    openURL(SvitloClient.page(for: model.selection.group, source: chart?.source ?? "", region: model.region))
+                }
                     .font(.subheadline)
                     .foregroundStyle(palette.accent)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -72,7 +84,7 @@ struct MainView: View {
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(color)
             }
-            if let fetched = model.snapshot?.fetchedAt, fetched > 0 {
+            if let fetched = chart?.fetchedAt, fetched > 0 {
                 Text(Copy.updated(ScheduleMath.formatDayTime(fetched, now: nowMs)))
                     .font(.caption)
                     .foregroundStyle(palette.muted)
@@ -95,19 +107,57 @@ struct MainView: View {
         }
         if let picture, !picture.outagesTomorrow.isEmpty {
             DayTrack(title: Copy.tomorrow(), outages: picture.outagesTomorrow, nowMin: nil, palette: palette)
-        } else if let snapshot = model.snapshot, ScheduleMath.groupHasTomorrow(snapshot: snapshot, group: model.selection.group) {
+        } else if let snapshot = chart, ScheduleMath.groupHasTomorrow(snapshot: snapshot, group: model.selection.group) {
             DayTrack(title: Copy.tomorrow(), outages: [], nowMin: nil, palette: palette)
         }
     }
 
     private var groups: some View {
-        let items = ScheduleMath.knownGroups(model.snapshot)
+        let items = ScheduleMath.knownGroups(model.snapshot, region: model.region)
+        let operators = chart?.operators ?? []
+        let selectedOperator = model.operatorId.isEmpty ? (chart?.operatorId ?? "") : model.operatorId
         return card {
+            Text(Copy.regionSection()).font(.headline).foregroundStyle(palette.ink)
+            Button(Regions.find(model.region).title()) { regionsOpen.toggle() }
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(palette.card2, in: RoundedRectangle(cornerRadius: 12))
+                .foregroundStyle(palette.ink)
+            if regionsOpen {
+                ForEach(Regions.all) { item in
+                    let selected = item.slug == Regions.normalize(model.region)
+                    Button(item.title()) {
+                        regionsOpen = false
+                        model.setRegion(item.slug)
+                    }
+                    .font(.subheadline.weight(selected ? .semibold : .regular))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .foregroundStyle(selected ? palette.accent : palette.ink)
+                }
+            }
+            if operators.count > 1 {
+                Text(Copy.operatorSection()).font(.headline).foregroundStyle(palette.ink)
+                ForEach(operators) { item in
+                    let selected = item.id == selectedOperator
+                    Button(item.name) { model.setOperator(item.id) }
+                        .font(.subheadline.weight(selected ? .semibold : .regular))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                        .foregroundStyle(selected ? palette.accent : palette.ink)
+                }
+            }
             Text(Copy.groupSection()).font(.headline).foregroundStyle(palette.ink)
+            if items.isEmpty {
+                Text(Copy.groupsSoon()).font(.caption).foregroundStyle(palette.muted)
+            }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(items, id: \.self) { group in
                     let selected = group == model.selection.group
-                    let on = model.snapshot.flatMap { ScheduleMath.picture(snapshot: $0, selection: Selection(group: group), now: nowMs).displayOn }
+                    let on = chart.flatMap { ScheduleMath.picture(snapshot: $0, selection: Selection(group: group), now: nowMs).displayOn }
                     Button(group) { model.selectGroup(group) }
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
@@ -126,7 +176,7 @@ struct MainView: View {
                 .font(.caption)
                 .foregroundStyle(palette.muted)
             ForEach(model.places, id: \.placeKey) { place in
-                let on = model.snapshot.flatMap { ScheduleMath.picture(snapshot: $0, selection: place, now: nowMs).displayOn }
+                let on = chart.flatMap { ScheduleMath.picture(snapshot: $0, selection: place, now: nowMs).displayOn }
                 let selected = place.placeKey == model.selection.placeKey
                 HStack {
                     Button {
@@ -242,6 +292,11 @@ struct MainView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(palette.card, in: RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func scheduleCredit(_ snapshot: Snapshot?, _ region: String) -> String? {
+        guard snapshot?.source == AlertsEnergy.source, Regions.same(snapshot?.region, region) else { return nil }
+        return Regions.same(region, Regions.kyivOblast) ? Copy.fallbackCredit() : Copy.alertsCredit()
     }
 
     private func chipColor(selected: Bool, on: Bool?) -> Color {

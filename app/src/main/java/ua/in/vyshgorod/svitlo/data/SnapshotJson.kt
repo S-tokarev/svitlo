@@ -9,6 +9,17 @@ object SnapshotJson {
         root.put("fetchedAt", snapshot.fetchedAt)
         root.put("tomorrowMissing", snapshot.tomorrowMissing)
         root.put("note", snapshot.note)
+        root.put("source", snapshot.source)
+        root.put("region", snapshot.region)
+        root.put("operatorId", snapshot.operatorId)
+        root.put("operators", JSONArray().apply {
+            snapshot.operators.forEach { operator ->
+                put(JSONObject().apply {
+                    put("id", operator.id)
+                    put("name", operator.name)
+                })
+            }
+        })
         root.put("days", JSONArray().apply {
             snapshot.days.forEach { day ->
                 put(JSONObject().apply {
@@ -101,8 +112,24 @@ object SnapshotJson {
                 houses = houses,
                 tomorrowMissing = root.optBoolean("tomorrowMissing"),
                 note = root.optString("note"),
+                source = root.optString("source"),
+                region = root.optString("region"),
+                operatorId = root.optString("operatorId"),
+                operators = operatorsOf(root.optJSONArray("operators")),
             )
         }.getOrNull()
+    }
+
+    private fun operatorsOf(array: JSONArray?): List<GridOperator> {
+        if (array == null) return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val id = item.optString("id")
+                if (id.isBlank()) continue
+                add(GridOperator(id, item.optString("name").ifBlank { id }))
+            }
+        }
     }
 
     private fun outagesOf(array: JSONArray?): List<Outage> {

@@ -3,6 +3,7 @@ package ua.`in`.vyshgorod.svitlo.desktop
 import org.json.JSONArray
 import org.json.JSONObject
 import ua.`in`.vyshgorod.svitlo.data.AppLanguage
+import ua.`in`.vyshgorod.svitlo.data.Regions
 import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
@@ -129,6 +130,14 @@ object DesktopStore {
     fun languageCode(): String? = read().optString("language").ifBlank { null }
 
     fun setLanguage(language: AppLanguage) = put("language", language.code())
+
+    fun region(): String = Regions.normalize(read().optString("region"))
+
+    fun setRegion(slug: String) = put("region", Regions.normalize(slug))
+
+    fun operatorId(): String = read().optString("operator")
+
+    fun setOperator(id: String) = put("operator", id)
 
     fun lastDisplayOn(placeKey: String): Boolean? {
         val json = read()

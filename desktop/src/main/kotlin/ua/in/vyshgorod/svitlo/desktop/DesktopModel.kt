@@ -18,8 +18,8 @@ import ua.`in`.vyshgorod.svitlo.data.PowerPicture
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
-import ua.`in`.vyshgorod.svitlo.data.SvitloClient
-import ua.`in`.vyshgorod.svitlo.data.SvitloParser
+import ua.`in`.vyshgorod.svitlo.data.Regions
+import ua.`in`.vyshgorod.svitlo.data.ScheduleLoad
 
 class DesktopModel {
     var selection by mutableStateOf(DesktopStore.loadSelection())
@@ -30,6 +30,8 @@ class DesktopModel {
     var notifyOn by mutableStateOf(DesktopStore.notifyWhenOn())
     var quiet by mutableStateOf(DesktopStore.quietNight())
     var language by mutableStateOf(AppLanguage.Uk)
+    var region by mutableStateOf(DesktopStore.region())
+    var operatorId by mutableStateOf(DesktopStore.operatorId())
     var now by mutableStateOf(System.currentTimeMillis())
 
     init {
@@ -46,9 +48,10 @@ class DesktopModel {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val refreshMs = 15 * 60 * 1000L
+    private var refreshAgain = false
 
     val picture: PowerPicture?
-        get() = snapshot?.let { ScheduleMath.picture(it, selection, now) }
+        get() = snapshot?.takeIf { Regions.same(it.region, region) }?.let { ScheduleMath.picture(it, selection, now) }
 
     fun start() {
         scope.launch {
@@ -69,7 +72,10 @@ class DesktopModel {
     }
 
     fun refresh() {
-        if (loading) return
+        if (loading) {
+            refreshAgain = true
+            return
+        }
         loading = true
         error = null
         scope.launch {
@@ -81,6 +87,10 @@ class DesktopModel {
                 checkAlerts()
             }.onFailure {
                 error = it.message ?: L10n.updateFailed()
+            }
+            if (refreshAgain) {
+                refreshAgain = false
+                refresh()
             }
         }
     }
@@ -177,9 +187,31 @@ class DesktopModel {
         DesktopStore.setLanguage(value)
     }
 
+    fun updateRegion(slug: String) {
+        val next = Regions.normalize(slug)
+        if (next == region) return
+        region = next
+        operatorId = ""
+        DesktopStore.setRegion(next)
+        DesktopStore.setOperator("")
+        selection = selection.copy(street = null, house = null, city = null)
+        DesktopStore.savePlaces(places, selection)
+        query = ""
+        hits = emptyList()
+        hint = null
+        refresh()
+    }
+
+    fun updateOperator(id: String) {
+        val current = operatorId.ifBlank { snapshot?.operatorId.orEmpty() }
+        if (id == current) return
+        operatorId = id
+        DesktopStore.setOperator(id)
+        refresh()
+    }
+
     private fun download(): Snapshot {
-        val parsed = SvitloParser.parse(SvitloClient.fetchPage())
-        if (parsed.days.isEmpty()) error(L10n.emptySchedule())
+        val parsed = ScheduleLoad.load(DesktopStore.region(), DesktopStore.operatorId())
         val next = Snapshot(
             fetchedAt = System.currentTimeMillis(),
             days = parsed.days,
@@ -187,10 +219,19 @@ class DesktopModel {
             houses = parsed.houses,
             tomorrowMissing = parsed.tomorrowMissing,
             note = parsed.note,
+            source = parsed.source,
+            region = parsed.region.ifBlank { DesktopStore.region() },
+            operatorId = parsed.operatorId,
+            operators = parsed.operators,
         )
         val previous = DesktopStore.loadSnapshot()
-        if (previous != null) {
-            watched().forEach { place ->
+        if (previous != null && Regions.same(previous.region, next.region)) {
+            val targets = if (region != Regions.KYIV_OBLAST) {
+                if (selection.group.isBlank()) emptyList() else listOf(selection.copy(street = null, house = null, city = null))
+            } else {
+                watched()
+            }
+            targets.forEach { place ->
                 if (!ScheduleMath.scheduleChanged(previous, next, place.group, next.fetchedAt)) return@forEach
                 val key = "plan:${place.placeKey}:" + ScheduleMath.planStamp(next, place.group)
                 if (DesktopStore.markNotified(key)) {
@@ -208,10 +249,11 @@ class DesktopModel {
     }
 
     fun tooltip(): String {
-        val items = watched()
-        if (items.isEmpty() || snapshot == null) return L10n.appTitle()
+        val items = alertTargets()
+        val current = snapshot?.takeIf { Regions.same(it.region, region) }
+        if (items.isEmpty() || current == null) return L10n.appTitle()
         return items.joinToString(" · ") { place ->
-            val on = ScheduleMath.picture(snapshot!!, place, now).displayOn
+            val on = ScheduleMath.picture(current, place, now).displayOn
             val name = place.placeLabel ?: place.group
             val state = when (on) {
                 true -> L10n.lightWord()
@@ -222,10 +264,20 @@ class DesktopModel {
         }
     }
 
+    private fun alertTargets(): List<Selection> {
+        val current = snapshot ?: return emptyList()
+        if (!Regions.same(current.region, region)) return emptyList()
+        if (region != Regions.KYIV_OBLAST) {
+            return if (selection.group.isBlank()) emptyList() else listOf(selection.copy(street = null, house = null, city = null))
+        }
+        return watched()
+    }
+
     private fun checkAlerts() {
         val currentSnapshot = snapshot ?: return
+        if (!Regions.same(currentSnapshot.region, region)) return
         val silent = quiet && ScheduleMath.isQuietHour(now)
-        watched().forEach { place ->
+        alertTargets().forEach { place ->
             val current = ScheduleMath.picture(currentSnapshot, place, now)
             val due = current.dueWarnOffAt
             if (!silent && warn && due != null && DesktopStore.markNotified("warn:${place.placeKey}:$due")) {

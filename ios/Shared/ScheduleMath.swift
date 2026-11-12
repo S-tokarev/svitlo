@@ -134,18 +134,46 @@ enum ScheduleMath {
         nextDay(snapshot)?.groups[group] != nil
     }
 
-    static func knownGroups(_ snapshot: Snapshot?) -> [String] {
-        var keys: Set<String> = [
-            "1.1", "1.2", "2.1", "2.2", "3.1", "3.2", "4.1", "4.2", "5.1", "5.2", "6.1", "6.2",
-        ]
-        snapshot?.days.forEach { keys.formUnion($0.groups.keys) }
-        snapshot?.live.forEach { keys.insert($0.id) }
-        snapshot?.houses.forEach { keys.insert($0.group) }
-        return keys.sorted {
-            let left = ($0.split(separator: ".").first.flatMap { Int($0) } ?? 9, $0)
-            let right = ($1.split(separator: ".").first.flatMap { Int($0) } ?? 9, $1)
+    private static let oblastGroups = [
+        "1.1", "1.2", "2.1", "2.2", "3.1", "3.2", "4.1", "4.2", "5.1", "5.2", "6.1", "6.2",
+    ]
+
+    static func knownGroups(_ snapshot: Snapshot?, region: String = Regions.kyivOblast) -> [String] {
+        let selected = Regions.normalize(region)
+        let stored: String
+        if snapshot == nil || snapshot?.region.isEmpty == true {
+            stored = Regions.kyivOblast
+        } else {
+            stored = Regions.normalize(snapshot?.region)
+        }
+        var found = Set<String>()
+        if stored == selected, let snapshot {
+            snapshot.days.forEach { found.formUnion($0.groups.keys) }
+            snapshot.live.forEach { found.insert($0.id) }
+            snapshot.houses.forEach { found.insert($0.group) }
+        }
+        if selected == Regions.kyivOblast && stored == selected {
+            return sortedGroups(oblastGroups + Array(found))
+        }
+        return sortedGroups(Array(found))
+    }
+
+    static func sortedGroups(_ ids: [String]) -> [String] {
+        var seen = Set<String>()
+        return ids.filter { !$0.isEmpty && seen.insert($0).inserted }.sorted { left, right in
+            let a = groupRank(left)
+            let b = groupRank(right)
+            if a.0 != b.0 { return a.0 < b.0 }
+            if a.1 != b.1 { return a.1 < b.1 }
             return left < right
         }
+    }
+
+    static func groupRank(_ id: String) -> (Int, Int) {
+        let parts = id.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        let major = Int(parts.first ?? "") ?? 999
+        let minor = parts.count > 1 ? (Int(parts[1]) ?? 0) : 0
+        return (major, minor)
     }
 
     static func scheduleChanged(previous: Snapshot, next: Snapshot, group: String, now: Int64) -> Bool {

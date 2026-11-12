@@ -43,11 +43,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ua.`in`.vyshgorod.svitlo.data.AlertsEnergy
+import ua.`in`.vyshgorod.svitlo.data.Regions
+import ua.`in`.vyshgorod.svitlo.data.Snapshot
 import ua.`in`.vyshgorod.svitlo.data.AppLanguage
 import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.PowerPicture
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
+import ua.`in`.vyshgorod.svitlo.data.SvitloClient
 
 private val Paper = Color(0xFFF4F0E6)
 private val Ink = Color(0xFF1E1A14)
@@ -86,6 +90,7 @@ fun DesktopApp(model: DesktopModel) {
     val onText = if (dark) OnGreenDark else OnGreen
     val offText = if (dark) OffRedDark else OffRed
     val picture = model.picture
+    val chart = model.snapshot?.takeIf { Regions.same(it.region, model.region) }
     val now = model.now
     val hint = nextHint(picture, now)
     val scheme = if (dark) {
@@ -112,7 +117,23 @@ fun DesktopApp(model: DesktopModel) {
         )
         StatusCard(model, picture, hint, card, ink, muted, onText, offText, now)
         model.error?.let { Text(it, color = offText) }
-        model.snapshot?.note?.takeIf { it.isNotBlank() }?.let { Text(it, color = ink) }
+        scheduleCredit(chart, model.region)?.let { credit ->
+            Text(
+                credit,
+                color = muted,
+                fontSize = 13.sp,
+                modifier = Modifier.clickable {
+                    runCatching {
+                        if (java.awt.Desktop.isDesktopSupported()) {
+                            java.awt.Desktop.getDesktop().browse(
+                                java.net.URI(SvitloClient.pageFor("", chart?.source.orEmpty(), model.region)),
+                            )
+                        }
+                    }
+                },
+            )
+        }
+        chart?.note?.takeIf { it.isNotBlank() }?.let { Text(it, color = ink) }
         val today = picture?.outagesToday
         if (picture != null && (today?.isNotEmpty() == true || picture.plannedOn != null)) {
             DayCard(
@@ -127,14 +148,14 @@ fun DesktopApp(model: DesktopModel) {
             )
         }
         val tomorrow = picture?.outagesTomorrow
-        val tomorrowPublished = model.snapshot?.let {
+        val tomorrowPublished = chart?.let {
             ScheduleMath.groupHasTomorrow(it, model.selection.group)
         } == true
         if (picture != null && tomorrow != null && (tomorrow.isNotEmpty() || tomorrowPublished)) {
             DayCard(L10n.tomorrow(), tomorrow, null, card, ink, muted, onText, offText)
         }
         GroupCard(model, card, card2, ink, muted, onText, offText)
-        SearchCard(model, card, card2, ink, muted)
+        if (model.region == Regions.KYIV_OBLAST) SearchCard(model, card, card2, ink, muted)
         SettingsCard(model, card, ink)
     }
     }
@@ -169,7 +190,7 @@ private fun StatusCard(
         Text(title, color = color, fontSize = 36.sp, fontWeight = FontWeight.Bold)
         Text(hint.first, color = color, fontSize = 16.sp)
         hint.second?.let { Text(it, color = color, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
-        model.snapshot?.let {
+        model.snapshot?.takeIf { Regions.same(it.region, model.region) }?.let {
             Spacer(Modifier.height(8.dp))
             Text(L10n.updated(ScheduleMath.formatDayTime(it.fetchedAt, now)), color = muted, fontSize = 12.sp)
         }
@@ -248,15 +269,72 @@ private fun GroupCard(
     onText: Color,
     offText: Color,
 ) {
-    val groups = ScheduleMath.knownGroups(model.snapshot)
+    val groups = ScheduleMath.knownGroups(model.snapshot, model.region)
+    val regionsOpen = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(card).padding(18.dp)) {
+        Text(L10n.regionSection(), color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            Regions.find(model.region).title(),
+            color = ink,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(card2)
+                .clickable { regionsOpen.value = !regionsOpen.value }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+        if (regionsOpen.value) {
+            Spacer(Modifier.height(6.dp))
+            Regions.all.forEach { item ->
+                val selected = item.slug == Regions.normalize(model.region)
+                Text(
+                    item.title(),
+                    color = if (selected) Accent else ink,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            regionsOpen.value = false
+                            model.updateRegion(item.slug)
+                        }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+        }
+        val chart = model.snapshot?.takeIf { Regions.same(it.region, model.region) }
+        val operators = chart?.operators.orEmpty()
+        val selectedOperator = model.operatorId.ifBlank { chart?.operatorId.orEmpty() }
+        if (operators.size > 1) {
+            Spacer(Modifier.height(12.dp))
+            Text(L10n.operatorSection(), color = ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            operators.forEach { operator ->
+                val selected = operator.id == selectedOperator
+                Text(
+                    operator.name,
+                    color = if (selected) Accent else ink,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { model.updateOperator(operator.id) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
         Text(L10n.groupSection(), color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        if (groups.isEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(L10n.groupsSoon(), color = muted, fontSize = 13.sp)
+        }
         Spacer(Modifier.height(8.dp))
         groups.chunked(6).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
                 row.forEach { group ->
                     val selected = group == model.selection.group
-                    val state = model.snapshot?.let {
+                    val state = model.snapshot?.takeIf { Regions.same(it.region, model.region) }?.let {
                         ScheduleMath.picture(it, ua.`in`.vyshgorod.svitlo.data.Selection(group), model.now).displayOn
                     }
                     val dot = when (state) {
@@ -287,6 +365,12 @@ private fun GroupCard(
     }
 }
 
+private fun scheduleCredit(snapshot: Snapshot?, region: String): String? {
+    if (snapshot?.source != AlertsEnergy.SOURCE) return null
+    if (!Regions.same(snapshot.region, region)) return null
+    return if (Regions.same(region, Regions.KYIV_OBLAST)) L10n.fallbackCredit() else L10n.alertsCredit()
+}
+
 @Composable
 private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Color, muted: Color) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(card).padding(18.dp)) {
@@ -294,7 +378,9 @@ private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Colo
         Text(L10n.addressesHint(), color = muted, fontSize = 13.sp)
         if (model.places.isNotEmpty()) Spacer(Modifier.height(8.dp))
         model.places.forEach { place ->
-            val on = model.snapshot?.let { ScheduleMath.picture(it, place, model.now).displayOn }
+            val on = model.snapshot?.takeIf { Regions.same(it.region, Regions.KYIV_OBLAST) }?.let {
+                ScheduleMath.picture(it, place, model.now).displayOn
+            }
             val selected = place.placeKey == model.selection.placeKey
             Row(
                 Modifier.fillMaxWidth().padding(bottom = 6.dp).clip(RoundedCornerShape(12.dp))
@@ -601,7 +687,9 @@ fun DesktopWidget(model: DesktopModel) {
             Text(L10n.addAddressInWindow(), color = muted, fontSize = 13.sp)
         }
         items.forEach { place ->
-            val picture = model.snapshot?.let { ScheduleMath.picture(it, place, model.now) }
+            val picture = model.snapshot?.takeIf { Regions.same(it.region, Regions.KYIV_OBLAST) }?.let {
+                ScheduleMath.picture(it, place, model.now)
+            }
             val on = picture?.displayOn
             val color = when (on) {
                 true -> onText

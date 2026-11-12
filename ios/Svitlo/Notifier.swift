@@ -32,9 +32,18 @@ enum Notifier {
         let center = UNUserNotificationCenter.current()
         center.removeAllPendingNotificationRequests()
         guard let snapshot else { return }
+        let region = AppStore.region()
+        guard Regions.same(snapshot.region, region) else { return }
+        let relevant: [Selection]
+        if region == Regions.kyivOblast {
+            relevant = places
+        } else {
+            let focus = AppStore.loadSelection()
+            relevant = focus.group.isEmpty ? [] : [Selection(group: focus.group)]
+        }
         let now = ScheduleMath.millis(Date())
         let quiet = AppStore.quietNight()
-        for selection in places where !selection.group.isEmpty {
+        for selection in relevant where !selection.group.isEmpty {
             let picture = ScheduleMath.picture(snapshot: snapshot, selection: selection, now: now)
             let place = selection.placeLabel
             if AppStore.warnEnabled() {

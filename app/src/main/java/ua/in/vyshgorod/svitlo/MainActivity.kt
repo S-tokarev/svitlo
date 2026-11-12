@@ -29,6 +29,7 @@ import ua.`in`.vyshgorod.svitlo.data.AddressHit
 import ua.`in`.vyshgorod.svitlo.data.AddressSearch
 import ua.`in`.vyshgorod.svitlo.data.AppLanguage
 import ua.`in`.vyshgorod.svitlo.data.L10n
+import ua.`in`.vyshgorod.svitlo.data.Regions
 import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.SvitloClient
 import ua.`in`.vyshgorod.svitlo.data.SvitloRepository
@@ -72,11 +73,18 @@ class MainActivity : ComponentActivity() {
                     onQuietNight = ::setQuietNight,
                     onTheme = ::setTheme,
                     onLanguage = ::setLanguage,
+                    onRegion = ::setRegion,
+                    onOperator = ::setOperator,
                     onRequestNotifications = ::requestNotifications,
                     onRequestBattery = ::requestBattery,
                     onOpenSource = {
                         val group = screen.selection.group
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SvitloClient.pageFor(group))))
+                        startActivity(
+                            Intent(
+                                Intent.ACTION_VIEW,
+                                Uri.parse(SvitloClient.pageFor(group, screen.snapshot?.source.orEmpty(), screen.region)),
+                            ),
+                        )
                     },
                 )
             }
@@ -111,6 +119,8 @@ class MainActivity : ComponentActivity() {
             quietNight = store.quietNight(),
             themeMode = store.themeMode(),
             language = L10n.language,
+            region = store.region(),
+            operatorId = store.operatorId(),
             notificationsGranted = notificationsGranted(),
             batteryFree = batteryFree(),
         )
@@ -228,6 +238,34 @@ class MainActivity : ComponentActivity() {
     private fun setTheme(mode: ThemeMode) {
         SvitloStore(this).setThemeMode(mode)
         screen = screen.copy(themeMode = mode)
+    }
+
+    private fun setRegion(slug: String) {
+        val region = Regions.normalize(slug)
+        val store = SvitloStore(this)
+        if (region == store.region()) return
+        store.setRegion(region)
+        store.setOperator("")
+        val selection = screen.selection.copy(street = null, house = null, city = null)
+        store.savePlaces(store.loadPlaces(), selection)
+        screen = screen.copy(
+            region = region,
+            operatorId = "",
+            selection = selection,
+            places = store.loadPlaces(),
+            results = emptyList(),
+            query = "",
+        )
+        refresh()
+    }
+
+    private fun setOperator(id: String) {
+        val store = SvitloStore(this)
+        val current = store.operatorId().ifBlank { screen.snapshot?.operatorId.orEmpty() }
+        if (id == current) return
+        store.setOperator(id)
+        screen = screen.copy(operatorId = id)
+        refresh()
     }
 
     private fun setLanguage(language: AppLanguage) {

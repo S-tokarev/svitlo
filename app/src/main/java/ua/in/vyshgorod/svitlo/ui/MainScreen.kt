@@ -54,7 +54,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
+import ua.`in`.vyshgorod.svitlo.data.AlertsEnergy
 import ua.`in`.vyshgorod.svitlo.data.AppLanguage
+import ua.`in`.vyshgorod.svitlo.data.GridOperator
+import ua.`in`.vyshgorod.svitlo.data.Regions
+import ua.`in`.vyshgorod.svitlo.data.Snapshot
 import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.PowerPicture
@@ -77,6 +81,8 @@ fun MainScreen(
     onQuietNight: (Boolean) -> Unit,
     onTheme: (ThemeMode) -> Unit,
     onLanguage: (AppLanguage) -> Unit,
+    onRegion: (String) -> Unit,
+    onOperator: (String) -> Unit,
     onRequestNotifications: () -> Unit,
     onRequestBattery: () -> Unit,
     onOpenSource: () -> Unit,
@@ -89,11 +95,12 @@ fun MainScreen(
             now = System.currentTimeMillis()
         }
     }
-    val picture = state.snapshot?.takeIf { state.selection.group.isNotBlank() }?.let {
+    val chart = state.snapshot?.takeIf { Regions.same(it.region, state.region) }
+    val picture = chart?.takeIf { state.selection.group.isNotBlank() }?.let {
         ScheduleMath.picture(it, state.selection, now)
     }
-    val groups = ScheduleMath.knownGroups(state.snapshot)
-    val tomorrowPublished = state.snapshot?.let {
+    val groups = ScheduleMath.knownGroups(state.snapshot, state.region)
+    val tomorrowPublished = chart?.let {
         ScheduleMath.groupHasTomorrow(it, state.selection.group)
     } == true
 
@@ -127,10 +134,10 @@ fun MainScreen(
         }
 
         item {
-            StatusCard(state.selection, picture, state.snapshot?.fetchedAt, now)
+            StatusCard(state.selection, picture, chart?.fetchedAt, now)
         }
 
-        val note = state.snapshot?.note?.takeIf { it.isNotBlank() }
+        val note = chart?.note?.takeIf { it.isNotBlank() }
         if (note != null) {
             item {
                 Panel(tint = LocalSvitloColors.current.note) {
@@ -184,13 +191,24 @@ fun MainScreen(
 
         item {
             Panel {
+                RegionPicker(
+                    state.region,
+                    chart?.operators.orEmpty(),
+                    state.operatorId.ifBlank { chart?.operatorId.orEmpty() },
+                    onRegion,
+                    onOperator,
+                )
+                Spacer(Modifier.height(14.dp))
                 SectionTitle(L10n.groupSection())
                 Spacer(Modifier.height(10.dp))
+                if (groups.isEmpty()) {
+                    Text(L10n.groupsSoon(), color = LocalSvitloColors.current.muted, fontSize = 13.sp, lineHeight = 18.sp)
+                }
                 groups.chunked(4).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
                         row.forEach { group ->
                             val selected = group == state.selection.group
-                            val on = state.snapshot?.let {
+                            val on = chart?.let {
                                 ScheduleMath.picture(it, Selection(group), now).displayOn
                             }
                             GroupChip(
@@ -207,7 +225,7 @@ fun MainScreen(
             }
         }
 
-        item {
+        if (state.region == Regions.KYIV_OBLAST) item {
             Panel {
                 SectionTitle(L10n.addresses())
                 Spacer(Modifier.height(4.dp))
@@ -219,7 +237,7 @@ fun MainScreen(
                 )
                 if (state.places.isNotEmpty()) Spacer(Modifier.height(8.dp))
                 state.places.forEach { place ->
-                    val on = state.snapshot?.let { ScheduleMath.picture(it, place, now).displayOn }
+                    val on = chart?.let { ScheduleMath.picture(it, place, now).displayOn }
                     val selected = place.placeKey == state.selection.placeKey
                     val title = place.placeLabel ?: L10n.groupTitle(place.group)
                     Row(
@@ -368,7 +386,13 @@ fun MainScreen(
                     Text(L10n.siteUpdated(updated), color = LocalSvitloColors.current.muted, fontSize = 12.sp)
                     Spacer(Modifier.height(2.dp))
                 }
-                Text(L10n.dtekCredit(), color = LocalSvitloColors.current.muted, fontSize = 12.sp)
+                if (Regions.same(state.region, Regions.KYIV_OBLAST)) {
+                    Text(L10n.dtekCredit(), color = LocalSvitloColors.current.muted, fontSize = 12.sp)
+                }
+                scheduleCredit(chart, state.region)?.let { credit ->
+                    Spacer(Modifier.height(2.dp))
+                    Text(credit, color = LocalSvitloColors.current.muted, fontSize = 12.sp)
+                }
                 Spacer(Modifier.height(4.dp))
                 Text(L10n.openSchedule(), color = LocalSvitloColors.current.accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -731,6 +755,74 @@ private fun SettingRow(title: String, checked: Boolean, onChecked: (Boolean) -> 
                 uncheckedBorderColor = LocalSvitloColors.current.muted,
             ),
         )
+    }
+}
+
+private fun scheduleCredit(snapshot: Snapshot?, region: String): String? {
+    if (snapshot?.source != AlertsEnergy.SOURCE) return null
+    if (!Regions.same(snapshot.region, region)) return null
+    return if (Regions.same(region, Regions.KYIV_OBLAST)) L10n.fallbackCredit() else L10n.alertsCredit()
+}
+
+@Composable
+private fun RegionPicker(
+    region: String,
+    operators: List<GridOperator>,
+    operatorId: String,
+    onRegion: (String) -> Unit,
+    onOperator: (String) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val colors = LocalSvitloColors.current
+    SectionTitle(L10n.regionSection())
+    Spacer(Modifier.height(8.dp))
+    Text(
+        Regions.find(region).title(),
+        color = colors.ink,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.card2)
+            .clickable { open = !open }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    )
+    if (open) {
+        Spacer(Modifier.height(6.dp))
+        Regions.all.forEach { item ->
+            val selected = item.slug == Regions.normalize(region)
+            Text(
+                item.title(),
+                color = if (selected) colors.accent else colors.ink,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        open = false
+                        onRegion(item.slug)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+    }
+    if (operators.size > 1) {
+        Spacer(Modifier.height(12.dp))
+        SectionTitle(L10n.operatorSection())
+        Spacer(Modifier.height(8.dp))
+        operators.forEach { operator ->
+            val selected = operator.id == operatorId
+            Text(
+                operator.name,
+                color = if (selected) colors.accent else colors.ink,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onOperator(operator.id) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
     }
 }
 
