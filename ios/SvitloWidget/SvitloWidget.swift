@@ -64,7 +64,13 @@ struct Provider: TimelineProvider {
         let place = selection.placeLabel
         let kicker = place ?? Copy.groupTitle(selection.group)
         let groupLine = Copy.widgetFooter(selection.group, ScheduleMath.formatDayTime(snapshot.fetchedAt, now: now))
-        let footer = snapshot.source == AlertsEnergy.source ? "\(groupLine) · alerts.energy" : groupLine
+        let footer: String
+        switch snapshot.source {
+        case AlertsEnergy.source: footer = "\(groupLine) · alerts.energy"
+        case Yasno.source: footer = "\(groupLine) · YASNO"
+        case DtekSchedule.source: footer = "\(groupLine) · ДТЕК"
+        default: footer = groupLine
+        }
         switch picture.displayOn {
         case true:
             let next: String

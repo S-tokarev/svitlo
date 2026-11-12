@@ -17,6 +17,8 @@ import ua.`in`.vyshgorod.svitlo.MainActivity
 import ua.`in`.vyshgorod.svitlo.R
 import ua.`in`.vyshgorod.svitlo.alert.AlarmScheduler
 import ua.`in`.vyshgorod.svitlo.data.AlertsEnergy
+import ua.`in`.vyshgorod.svitlo.data.DtekSchedule
+import ua.`in`.vyshgorod.svitlo.data.Yasno
 import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Regions
 import ua.`in`.vyshgorod.svitlo.data.Outage
@@ -119,7 +121,12 @@ class SvitloWidget : AppWidgetProvider() {
                     }
                 }
                 val groupLine = L10n.widgetFooter(selection.group, ScheduleMath.formatDayTime(snapshot.fetchedAt, now))
-                val footer = if (snapshot.source == AlertsEnergy.SOURCE) "$groupLine · alerts.energy" else groupLine
+                val footer = when (snapshot.source) {
+                    AlertsEnergy.SOURCE -> "$groupLine · alerts.energy"
+                    Yasno.SOURCE -> "$groupLine · YASNO"
+                    DtekSchedule.SOURCE -> "$groupLine · ДТЕК"
+                    else -> groupLine
+                }
                 views.setTextViewText(R.id.widget_updated, footer)
                 if (picture.displayOn != null) {
                     views.setViewVisibility(R.id.widget_scale, View.VISIBLE)

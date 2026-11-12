@@ -27,6 +27,7 @@ enum AppStore {
     private static let languageKey = "language"
     private static let regionKey = "region"
     private static let operatorKey = "operator"
+    private static let apiKeyKey = "alertsKey"
 
     static func loadSelection() -> Selection {
         decode(Selection.self, key: selectionKey) ?? Selection()
@@ -120,6 +121,14 @@ enum AppStore {
 
     static func setOperator(_ id: String) {
         AppGroup.defaults.set(id, forKey: operatorKey)
+    }
+
+    static func apiKey() -> String {
+        SvitloClient.normalizeApiKey(AppGroup.defaults.string(forKey: apiKeyKey) ?? "")
+    }
+
+    static func setApiKey(_ value: String) {
+        AppGroup.defaults.set(SvitloClient.normalizeApiKey(value), forKey: apiKeyKey)
     }
 
     private static func encode<T: Encodable>(_ value: T, key: String) {

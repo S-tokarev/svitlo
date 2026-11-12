@@ -5,6 +5,7 @@ struct MainView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
     @State private var regionsOpen = false
+    @State private var apiKeyDraft = AppStore.apiKey()
 
     private var palette: SvitloPalette { SvitloPalette.resolve(model.theme, systemDark: colorScheme == .dark) }
     private var nowMs: Int64 { ScheduleMath.millis(model.now) }
@@ -29,6 +30,7 @@ struct MainView: View {
                 groups
                 if model.region == Regions.kyivOblast { address }
                 appearance
+                apiKeyCard
                 notifications
                 if let credit = scheduleCredit(chart, model.region) {
                     Text(credit)
@@ -247,6 +249,26 @@ struct MainView: View {
         }
     }
 
+    private var apiKeyCard: some View {
+        card {
+            Text(Copy.apiKeySection()).font(.headline).foregroundStyle(palette.ink)
+            Text(Copy.apiKeyHint())
+                .font(.caption)
+                .foregroundStyle(palette.muted)
+            SecureField(Copy.apiKeySection(), text: $apiKeyDraft)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(palette.card2, in: RoundedRectangle(cornerRadius: 12))
+            Button(Copy.saveKey()) {
+                model.setApiKey(apiKeyDraft)
+                apiKeyDraft = model.apiKey
+            }
+            .disabled(SvitloClient.normalizeApiKey(apiKeyDraft) == model.apiKey)
+        }
+    }
+
     private var notifications: some View {
         card {
             Text(Copy.notifications()).font(.headline).foregroundStyle(palette.ink)
@@ -295,8 +317,17 @@ struct MainView: View {
     }
 
     private func scheduleCredit(_ snapshot: Snapshot?, _ region: String) -> String? {
-        guard snapshot?.source == AlertsEnergy.source, Regions.same(snapshot?.region, region) else { return nil }
-        return Regions.same(region, Regions.kyivOblast) ? Copy.fallbackCredit() : Copy.alertsCredit()
+        guard let snapshot, Regions.same(snapshot.region, region) else { return nil }
+        switch snapshot.source {
+        case AlertsEnergy.source:
+            return Regions.same(region, Regions.kyivOblast) ? Copy.fallbackCredit() : Copy.alertsCredit()
+        case Yasno.source:
+            return Copy.yasnoCredit()
+        case DtekSchedule.source:
+            return Copy.dtekScheduleCredit()
+        default:
+            return nil
+        }
     }
 
     private func chipColor(selected: Bool, on: Bool?) -> Color {

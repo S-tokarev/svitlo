@@ -73,7 +73,7 @@ data class Snapshot(
     val tomorrowMissing: Boolean,
     /** Operator announcement. A local notice does not cancel a published plan. */
     val note: String = "",
-    /** Empty when the schedule came from vyshgorod.in.ua. "alerts.energy" is the fallback. */
+    /** Empty when the schedule came from vyshgorod.in.ua. "yasno", "dtek" and "alerts.energy" name the other sources. */
     val source: String = "",
     /** alerts.energy region slug. Blank means a schedule saved before the region picker. */
     val region: String = "",

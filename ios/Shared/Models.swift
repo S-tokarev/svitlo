@@ -74,7 +74,7 @@ struct Snapshot: Codable, Equatable {
     var houses: [HouseStatus]
     var tomorrowMissing: Bool
     var note: String
-    /// Empty when the schedule came from vyshgorod.in.ua. "alerts.energy" is the fallback.
+    /// Empty when the schedule came from vyshgorod.in.ua. "yasno", "dtek" and "alerts.energy" name the other sources.
     var source: String
     /// alerts.energy region slug. Blank means a schedule saved before the region picker.
     var region: String

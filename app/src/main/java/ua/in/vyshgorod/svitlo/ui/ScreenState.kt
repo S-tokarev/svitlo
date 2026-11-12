@@ -25,6 +25,7 @@ data class ScreenState(
     val language: AppLanguage = L10n.language,
     val region: String = Regions.KYIV_OBLAST,
     val operatorId: String = "",
+    val apiKey: String = "",
     val notificationsGranted: Boolean = true,
     val batteryFree: Boolean = true,
 )

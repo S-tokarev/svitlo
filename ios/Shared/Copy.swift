@@ -255,8 +255,30 @@ enum Copy {
             "Could not load the schedule from alerts.energy"
         )
     }
+    static func tooMany() -> String {
+        t(
+            "Сайт просить зачекати: забагато запитів. Попередній графік лишається на екрані.",
+            "Сайт просит подождать: слишком много запросов. Предыдущий график остаётся на экране.",
+            "The site asked us to wait: too many requests. The previous schedule stays on screen."
+        )
+    }
+    static func apiKeySection() -> String { t("Ключ API", "Ключ API", "API key") }
+    static func apiKeyHint() -> String {
+        t(
+            "Свій ключ з кабінету alerts.energy. Тоді графік береться з API, а не зі сторінки, яку сайт блокує. Ключ лишається тільки на цьому пристрої.",
+            "Свой ключ из кабинета alerts.energy. Тогда график берётся из API, а не со страницы, которую сайт блокирует. Ключ остаётся только на этом устройстве.",
+            "Your key from the alerts.energy account. The schedule then comes from the API instead of the page the site blocks. The key stays on this device."
+        )
+    }
+    static func saveKey() -> String { t("Зберегти ключ", "Сохранить ключ", "Save key") }
     static func alertsCredit() -> String {
         t("Графік з alerts.energy", "График с alerts.energy", "Schedule from alerts.energy")
+    }
+    static func yasnoCredit() -> String {
+        t("Графік з YASNO", "График с YASNO", "Schedule from YASNO")
+    }
+    static func dtekScheduleCredit() -> String {
+        t("Графік з сайту ДТЕК", "График с сайта ДТЕК", "Schedule from the DTEK site")
     }
     static func dtekAnswered(_ code: Int) -> String { t("ДТЕК відповів \(code)", "ДТЕК ответил \(code)", "DTEK answered \(code)") }
     static func dtekClosed() -> String { t("ДТЕК тимчасово закрив довідник", "ДТЕК временно закрыл справочник", "DTEK temporarily closed the directory") }

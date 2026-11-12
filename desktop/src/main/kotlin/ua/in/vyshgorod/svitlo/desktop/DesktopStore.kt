@@ -6,6 +6,7 @@ import ua.`in`.vyshgorod.svitlo.data.AppLanguage
 import ua.`in`.vyshgorod.svitlo.data.Regions
 import ua.`in`.vyshgorod.svitlo.data.L10n
 import ua.`in`.vyshgorod.svitlo.data.Selection
+import ua.`in`.vyshgorod.svitlo.data.SvitloClient
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
 import ua.`in`.vyshgorod.svitlo.data.SnapshotJson
 import java.io.File
@@ -138,6 +139,10 @@ object DesktopStore {
     fun operatorId(): String = read().optString("operator")
 
     fun setOperator(id: String) = put("operator", id)
+
+    fun apiKey(): String = SvitloClient.normalizeApiKey(read().optString("alertsKey"))
+
+    fun setApiKey(value: String) = put("alertsKey", SvitloClient.normalizeApiKey(value))
 
     fun lastDisplayOn(placeKey: String): Boolean? {
         val json = read()

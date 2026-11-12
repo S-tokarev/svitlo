@@ -24,6 +24,20 @@ object AlertsEnergy {
     fun parse(html: String, operatorId: String = ""): ParsedPage {
         val json = stateJson(html) ?: return emptyPage()
         val root = runCatching { JSONObject(json) }.getOrNull() ?: return emptyPage()
+        return parseRoot(root, operatorId)
+    }
+
+    /** Shutdown and supplier arrays from the documented JSON API. No network. */
+    fun parseApi(shutdownsJson: String, suppliersJson: String, operatorId: String = ""): ParsedPage {
+        val shutdowns = runCatching { JSONArray(shutdownsJson) }.getOrNull() ?: return emptyPage()
+        val suppliers = runCatching { JSONArray(suppliersJson) }.getOrNull() ?: JSONArray()
+        val root = JSONObject()
+            .put("shutdowns", JSONObject().put("data", shutdowns))
+            .put("suppliers", JSONObject().put("data", suppliers))
+        return parseRoot(root, operatorId)
+    }
+
+    private fun parseRoot(root: JSONObject, operatorId: String): ParsedPage {
         val rows = findRows(root) ?: return emptyPage()
         val suppliers = suppliers(root)
         val initiators = linkedSetOf<String>()
@@ -109,9 +123,16 @@ object AlertsEnergy {
             return buildList {
                 for (index in 0 until data.length()) {
                     val item = data.optJSONObject(index) ?: continue
-                    val id = text(item, "supplierKey", "slug")
+                    val id = text(item, "supplierKey", "supplier_key", "slug")
                     if (id.isBlank()) continue
-                    add(Supplier(id, text(item, "supplierName").ifBlank { id }, text(item, "supplierType"), item.optInt("priority")))
+                    add(
+                        Supplier(
+                            id,
+                            text(item, "supplierName", "supplier_name").ifBlank { id },
+                            text(item, "supplierType", "supplier_type"),
+                            item.optInt("priority"),
+                        ),
+                    )
                 }
             }
         }

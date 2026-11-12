@@ -139,6 +139,103 @@ final class LogicTests: XCTestCase {
         XCTAssertTrue(ScheduleMath.knownGroups(nil, region: Regions.kyiv).isEmpty)
     }
 
+    func testApiArraysUseSnakeCase() {
+        let clear = Array(repeating: "0", count: 24).joined(separator: ",")
+        let tomorrowOff = (["1"] + Array(repeating: "0", count: 23)).joined(separator: ",")
+        let secondHalf = (["3"] + Array(repeating: "0", count: 23)).joined(separator: ",")
+        let shutdowns = """
+        [{"initiator":"city_dtek","queue":"2.1","updated":"2026-11-11T18:30:18.845Z","today":[\(clear)],"tomorrow":[\(tomorrowOff)],"today_status":"NoShutdowns","tomorrow_status":"ScheduleApplies","today_date":"2026-11-12","tomorrow_date":"2026-11-13"},{"initiator":"other_net","queue":"10.1","updated":"2026-11-11T18:30:18.845Z","today":[\(secondHalf)],"tomorrow":[],"today_status":"ScheduleApplies","tomorrow_status":"WaitingForSchedule","today_date":"2026-11-12","tomorrow_date":"2026-11-13"}]
+        """
+        let suppliers = """
+        [{"supplier_key":"city_uz","supplier_name":"Укрзалізниця","supplier_type":"uz","priority":1},{"supplier_key":"city_dtek","supplier_name":"ДТЕК Київські електромережі","supplier_type":"oblenergo","priority":5}]
+        """
+        let page = AlertsEnergy.parseApi(shutdowns: shutdowns, suppliers: suppliers)
+        XCTAssertEqual(page.source, AlertsEnergy.source)
+        XCTAssertEqual(page.operatorId, "city_dtek")
+        XCTAssertEqual(page.operators.map(\.name), ["ДТЕК Київські електромережі"])
+        let today = page.days.first { $0.day == "today" }
+        XCTAssertEqual(today?.groups["2.1"], [])
+        XCTAssertEqual(today?.groupUpdated["2.1"], "11.11.2026 20:30")
+        let tomorrow = page.days.first { $0.day == "tomorrow" }
+        XCTAssertEqual(tomorrow?.groups["2.1"], [Outage(startMin: 0, endMin: 60)])
+        let other = AlertsEnergy.parseApi(shutdowns: shutdowns, suppliers: suppliers, operatorId: "other_net")
+        XCTAssertEqual(other.days.first { $0.day == "today" }?.groups["10.1"], [Outage(startMin: 30, endMin: 60)])
+        XCTAssertTrue(AlertsEnergy.parseApi(shutdowns: "nope", suppliers: "[]").days.isEmpty)
+        XCTAssertTrue(SvitloClient.looksLimited(code: 200, body: "Забагато запитів. Спробуйте пізніше."))
+        XCTAssertTrue(SvitloClient.looksLimited(code: 429, body: "ok"))
+        XCTAssertFalse(SvitloClient.looksLimited(code: 200, body: "<script id=\"ng-state\">Забагато запитів</script>"))
+        XCTAssertEqual(SvitloClient.retryWaitMs("1"), 60_000)
+        XCTAssertEqual(SvitloClient.retryWaitMs(nil), 600_000)
+        XCTAssertEqual(SvitloClient.retryWaitMs("99999"), 1_800_000)
+        XCTAssertEqual(SvitloClient.normalizeApiKey("  Bearer secret  "), "secret")
+    }
+
+    func testYasnoMapsSlotsAndDropsASameDateTomorrow() {
+        let page = Yasno.parse(yasnoSample(), operatorId: "902", operators: [GridOperator(id: "902", name: "ТОВ «ДТЕК КИЇВСЬКІ ЕЛЕКТРОМЕРЕЖІ»")])
+        let today = page.days.first { $0.day == "today" }
+        XCTAssertEqual(today?.updatedDate, "12.11.2026")
+        XCTAssertEqual(today?.label, "12 листопада")
+        XCTAssertEqual(today?.updatedTime, "")
+        XCTAssertEqual(Set(today?.groups.keys ?? []), Set(["1.1", "2.1", "4.1", "5.1", "10.1"]))
+        XCTAssertEqual(today?.groups["1.1"], [Outage(startMin: 120, endMin: 240)])
+        XCTAssertEqual(today?.groups["2.1"], [])
+        XCTAssertEqual(today?.groups["5.1"], [])
+        XCTAssertEqual(today?.groups["4.1"], [Outage(startMin: 100, endMin: 130)])
+        XCTAssertEqual(today?.groups["10.1"], [Outage(startMin: 0, endMin: 30)])
+        XCTAssertNil(today?.groups["3.1"])
+        XCTAssertEqual(today?.groupUpdated["1.1"], "11.11.2026 21:00")
+        XCTAssertEqual(today?.groupUpdated["4.1"], "")
+        let tomorrow = page.days.first { $0.day == "tomorrow" }
+        XCTAssertEqual(tomorrow?.updatedDate, "13.11.2026")
+        XCTAssertEqual(tomorrow?.groups.keys.sorted(), ["3.1"])
+        XCTAssertEqual(tomorrow?.groups["3.1"], [Outage(startMin: 60, endMin: 120)])
+        XCTAssertNil(tomorrow?.groups["2.1"])
+        XCTAssertFalse(page.tomorrowMissing)
+        XCTAssertEqual(page.source, Yasno.source)
+        let waiting = Yasno.parse(
+            #"{"1.1":{"today":{"slots":[],"date":"2026-11-12T00:00:00+02:00","status":"WaitingForSchedule"}}}"#,
+            operatorId: "902",
+            operators: []
+        )
+        XCTAssertTrue(waiting.days.isEmpty)
+        XCTAssertTrue(Yasno.covers(Regions.kyiv))
+        XCTAssertTrue(Yasno.covers("dnipropetrovska-oblast"))
+        XCTAssertFalse(Yasno.covers(Regions.kyivOblast))
+        XCTAssertEqual(SvitloClient.page(for: "", source: Yasno.source, region: Regions.kyiv).absoluteString, "https://static.yasno.ua/kyiv/outages")
+        XCTAssertEqual(SvitloClient.page(for: "", region: "dnipropetrovska-oblast").absoluteString, "https://static.yasno.ua/dnipro/outages")
+        XCTAssertEqual(SvitloClient.page(for: "", source: DtekSchedule.source).absoluteString, "https://www.dtek-krem.com.ua/ua/shutdowns")
+        XCTAssertEqual(SvitloClient.page(for: "", region: Regions.kyivOblast).absoluteString, "https://vyshgorod.in.ua/svitlo")
+        XCTAssertEqual(SvitloClient.page(for: "", region: "odeska-oblast").absoluteString, "https://alerts.energy/odeska-oblast")
+    }
+
+    func testDtekFactMapsProbedHours() {
+        let page = DtekSchedule.parse(dtekFact())
+        let today = page.days.first { $0.day == "today" }
+        XCTAssertEqual(today?.updatedDate, "12.11.2026")
+        XCTAssertEqual(today?.updatedTime, "15:00")
+        XCTAssertEqual(today?.label, "12 листопада")
+        XCTAssertEqual(Set(today?.groups.keys ?? []), Set(["1.1", "1.2", "3.1", "4.1", "6.2"]))
+        XCTAssertEqual(today?.groups["1.1"], [
+            Outage(startMin: 0, endMin: 240),
+            Outage(startMin: 600, endMin: 870),
+            Outage(startMin: 1200, endMin: 1440),
+        ])
+        XCTAssertEqual(today?.groups["1.2"], [Outage(startMin: 0, endMin: 60)])
+        XCTAssertEqual(today?.groups["3.1"], [])
+        XCTAssertEqual(today?.groups["4.1"], [Outage(startMin: 840, endMin: 870), Outage(startMin: 930, endMin: 960)])
+        XCTAssertEqual(today?.groups["6.2"], [Outage(startMin: 0, endMin: 90), Outage(startMin: 150, endMin: 180)])
+        XCTAssertEqual(today?.groupUpdated["1.1"], "12.11.2026 15:00")
+        XCTAssertNil(today?.groups["junk"])
+        let tomorrow = page.days.first { $0.day == "tomorrow" }
+        XCTAssertEqual(tomorrow?.groups["2.1"], [Outage(startMin: 1380, endMin: 1440)])
+        XCTAssertEqual(tomorrow?.label, "13 листопада")
+        XCTAssertFalse(page.tomorrowMissing)
+        XCTAssertEqual(page.source, DtekSchedule.source)
+        XCTAssertEqual(page.region, Regions.kyivOblast)
+        XCTAssertEqual(page.operatorId, AlertsEnergy.kyivOblastDtek)
+        XCTAssertTrue(DtekSchedule.parse(#"{"result":false}"#).days.isEmpty)
+    }
+
     func testEmptyPageDoesNotInventASchedule() {
         let page = SvitloParser.parse(html: "<html>challenge</html>")
         XCTAssertTrue(page.days.isEmpty)
@@ -281,6 +378,87 @@ final class LogicTests: XCTestCase {
         let cookie = "25ab%3A2%3A%7Bi%3A0%3Bs%3A15%3A%22_csrf-dtek-krem%22%3Bi%3A1%3Bs%3A32%3A%22yOTG-jz1o4Y2vMdssuTULtIJJc0lGGZa%22%3B%7D"
         XCTAssertEqual(AddressMatch.csrfToken(cookie), "yOTG-jz1o4Y2vMdssuTULtIJJc0lGGZa")
         XCTAssertEqual(AddressMatch.maskToken("abc", mask: [1, 2, 3]).count, 8)
+    }
+
+    private func yasnoSample() -> String {
+        """
+        {
+          "nope": {"today": {"slots": [{"start": 0, "end": 60, "type": "Definite"}], "date": "2026-11-12T00:00:00+02:00", "status": "ScheduleApplies"}},
+          "2.1": {
+            "today": {"slots": [], "date": "2026-11-12T00:00:00+02:00", "status": "NoShutdowns"},
+            "tomorrow": {"slots": [{"start": 0, "end": 60, "type": "Definite"}], "date": "2026-11-12T00:00:00+02:00", "status": "ScheduleApplies"},
+            "updatedOn": "2026-11-11T19:00:01+00:00"
+          },
+          "10.1": {
+            "today": {"slots": [{"start": 0, "end": 30, "type": "Definite"}], "date": "2026-11-12T00:00:00+02:00", "status": "ScheduleApplies"},
+            "updatedOn": "2026-11-11T19:00:01+00:00"
+          },
+          "1.1": {
+            "today": {
+              "slots": [
+                {"start": 0, "end": 120, "type": "NotPlanned"},
+                {"start": 120, "end": 180, "type": "Definite"},
+                {"start": 180, "end": 240, "type": "Possible"}
+              ],
+              "date": "2026-11-12T00:00:00+02:00",
+              "status": "ScheduleApplies"
+            },
+            "tomorrow": {"slots": [], "date": "2026-11-13T00:00:00+02:00", "status": "WaitingForSchedule"},
+            "updatedOn": "2026-11-11T19:00:01+00:00"
+          },
+          "3.1": {
+            "today": {"slots": [], "date": "2026-11-12T00:00:00+02:00", "status": "EmergencyShutdowns"},
+            "tomorrow": {
+              "slots": [
+                {"start": 60, "end": 90, "type": "Definite"},
+                {"start": 90, "end": 120, "type": "Possible"}
+              ],
+              "date": "2026-11-13T00:00:00+02:00",
+              "status": "ScheduleApplies"
+            }
+          },
+          "4.1": {
+            "today": {"slots": [{"start": 100, "end": 130, "type": "Definite"}], "date": "2026-11-12T00:00:00+02:00", "status": "EmergencyShutdowns"}
+          },
+          "5.1": {
+            "today": {"slots": [], "date": "2026-11-12T00:00:00+02:00", "status": "NoOutages"}
+          }
+        }
+        """
+    }
+
+    private func dtekFact() -> String {
+        let probed = (1...24).map { hour -> String in
+            let value: String
+            switch hour {
+            case 1...4, 11...14, 21...24: value = "no"
+            case 15: value = "first"
+            default: value = "yes"
+            }
+            return "\"\(hour)\":\"\(value)\""
+        }.joined(separator: ",")
+        let today = 1_794_434_400
+        let tomorrow = today + 86_400
+        return """
+        {
+          "result": true,
+          "fact": {
+            "update": "12.11.2026 15:00",
+            "today": \(today),
+            "data": {
+              "\(today)": {
+                "GPV1.1": {\(probed)},
+                "GPV1.2": {"1": "no"},
+                "GPV3.1": {"1": "yes", "2": "yes"},
+                "GPV4.1": {"15": "first", "16": "second"},
+                "GPV6.2": {"1": "maybe", "2": "mfirst", "3": "msecond", "4": "yes"},
+                "junk": {"1": "no"}
+              },
+              "\(tomorrow)": {"GPV2.1": {"24": "no"}}
+            }
+          }
+        }
+        """
     }
 
     private func alertsPage(_ rows: String) -> String {

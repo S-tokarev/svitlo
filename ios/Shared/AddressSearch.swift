@@ -309,6 +309,23 @@ actor AddressDirectory {
 
     func houses(city: String, street: String, houseQuery: String?) async throws -> AddressLookup {
         _ = try await loadDirectory()
+        let json = try await homeNumbers(city: city, street: street, updateFact: "")
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (root["result"] as? Bool) == true else { return AddressLookup(hits: [], hint: nil) }
+        return AddressMatch.parseHouses(json, city: city, street: street, houseQuery: houseQuery)
+    }
+
+    /// Group schedule for the whole oblast. Any published street returns the same fact.
+    func oblastSchedule() async throws -> String {
+        let streets = try await loadDirectory()
+        guard let place = streets.first(where: { !$0.value.isEmpty }), let street = place.value.first else {
+            throw SvitloError.message(Copy.directoryEmpty())
+        }
+        return try await homeNumbers(city: place.key, street: street, updateFact: "01.01.2000 00:00")
+    }
+
+    private func homeNumbers(city: String, street: String, updateFact: String) async throws -> String {
         let body = form([
             ("method", "getHomeNum"),
             ("data[0][name]", "city"),
@@ -316,13 +333,9 @@ actor AddressDirectory {
             ("data[1][name]", "street"),
             ("data[1][value]", street),
             ("data[2][name]", "updateFact"),
-            ("data[2][value]", ""),
+            ("data[2][value]", updateFact),
         ])
-        let json = try await call(body)
-        guard let data = json.data(using: .utf8),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              (root["result"] as? Bool) == true else { return AddressLookup(hits: [], hint: nil) }
-        return AddressMatch.parseHouses(json, city: city, street: street, houseQuery: houseQuery)
+        return try await call(body)
     }
 
     private func loadDirectory() async throws -> [String: [String]] {
@@ -386,6 +399,9 @@ actor AddressDirectory {
         guard let http = response as? HTTPURLResponse else { throw SvitloError.message(Copy.dtekSilent()) }
         absorbCookies(http)
         let text = String(data: data, encoding: .utf8) ?? ""
+        if SvitloClient.looksLimited(code: http.statusCode, body: text) {
+            throw RateLimited(waitMs: SvitloClient.retryWaitMs(http.value(forHTTPHeaderField: "Retry-After")))
+        }
         return (http.statusCode, text)
     }
 

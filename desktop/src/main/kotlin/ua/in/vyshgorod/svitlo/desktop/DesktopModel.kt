@@ -20,6 +20,7 @@ import ua.`in`.vyshgorod.svitlo.data.Selection
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
 import ua.`in`.vyshgorod.svitlo.data.Regions
 import ua.`in`.vyshgorod.svitlo.data.ScheduleLoad
+import ua.`in`.vyshgorod.svitlo.data.SvitloClient
 
 class DesktopModel {
     var selection by mutableStateOf(DesktopStore.loadSelection())
@@ -32,6 +33,7 @@ class DesktopModel {
     var language by mutableStateOf(AppLanguage.Uk)
     var region by mutableStateOf(DesktopStore.region())
     var operatorId by mutableStateOf(DesktopStore.operatorId())
+    var apiKey by mutableStateOf(DesktopStore.apiKey())
     var now by mutableStateOf(System.currentTimeMillis())
 
     init {
@@ -210,8 +212,21 @@ class DesktopModel {
         refresh()
     }
 
+    fun updateApiKey(value: String) {
+        val next = SvitloClient.normalizeApiKey(value)
+        if (next == apiKey) return
+        apiKey = next
+        DesktopStore.setApiKey(next)
+        refresh()
+    }
+
     private fun download(): Snapshot {
-        val parsed = ScheduleLoad.load(DesktopStore.region(), DesktopStore.operatorId())
+        val parsed = ScheduleLoad.load(
+            DesktopStore.region(),
+            DesktopStore.operatorId(),
+            DesktopStore.apiKey(),
+            DesktopStore.cacheFile,
+        )
         val next = Snapshot(
             fetchedAt = System.currentTimeMillis(),
             days = parsed.days,

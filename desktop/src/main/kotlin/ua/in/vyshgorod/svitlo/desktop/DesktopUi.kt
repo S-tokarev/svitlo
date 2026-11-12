@@ -30,6 +30,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,12 +40,15 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ua.`in`.vyshgorod.svitlo.data.AlertsEnergy
+import ua.`in`.vyshgorod.svitlo.data.DtekSchedule
+import ua.`in`.vyshgorod.svitlo.data.Yasno
 import ua.`in`.vyshgorod.svitlo.data.Regions
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
 import ua.`in`.vyshgorod.svitlo.data.AppLanguage
@@ -156,7 +161,7 @@ fun DesktopApp(model: DesktopModel) {
         }
         GroupCard(model, card, card2, ink, muted, onText, offText)
         if (model.region == Regions.KYIV_OBLAST) SearchCard(model, card, card2, ink, muted)
-        SettingsCard(model, card, ink)
+        SettingsCard(model, card, ink, muted)
     }
     }
 }
@@ -366,9 +371,13 @@ private fun GroupCard(
 }
 
 private fun scheduleCredit(snapshot: Snapshot?, region: String): String? {
-    if (snapshot?.source != AlertsEnergy.SOURCE) return null
-    if (!Regions.same(snapshot.region, region)) return null
-    return if (Regions.same(region, Regions.KYIV_OBLAST)) L10n.fallbackCredit() else L10n.alertsCredit()
+    if (snapshot == null || !Regions.same(snapshot.region, region)) return null
+    return when (snapshot.source) {
+        AlertsEnergy.SOURCE -> if (Regions.same(region, Regions.KYIV_OBLAST)) L10n.fallbackCredit() else L10n.alertsCredit()
+        Yasno.SOURCE -> L10n.yasnoCredit()
+        DtekSchedule.SOURCE -> L10n.dtekScheduleCredit()
+        else -> null
+    }
 }
 
 @Composable
@@ -441,7 +450,7 @@ private fun SearchCard(model: DesktopModel, card: Color, card2: Color, ink: Colo
 }
 
 @Composable
-private fun SettingsCard(model: DesktopModel, card: Color, ink: Color) {
+private fun SettingsCard(model: DesktopModel, card: Color, ink: Color, muted: Color) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(card).padding(18.dp)) {
         Text(L10n.languageSection(), color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
@@ -484,6 +493,25 @@ private fun SettingsCard(model: DesktopModel, card: Color, ink: Color) {
         Toggle(L10n.warnToggleDesktop(), model.warn, model::updateWarn, ink)
         Toggle(L10n.notifyOnDesktop(), model.notifyOn, model::updateNotify, ink)
         Toggle(L10n.quietNightDesktop(), model.quiet, model::updateQuiet, ink)
+        Spacer(Modifier.height(12.dp))
+        Text(L10n.apiKeySection(), color = ink, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(4.dp))
+        Text(L10n.apiKeyHint(), color = muted, fontSize = 13.sp)
+        Spacer(Modifier.height(8.dp))
+        val draft = remember(model.apiKey) { mutableStateOf(model.apiKey) }
+        OutlinedTextField(
+            value = draft.value,
+            onValueChange = { draft.value = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            placeholder = { Text(L10n.apiKeySection()) },
+        )
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = { model.updateApiKey(draft.value) },
+            enabled = SvitloClient.normalizeApiKey(draft.value) != model.apiKey,
+        ) { Text(L10n.saveKey()) }
     }
 }
 

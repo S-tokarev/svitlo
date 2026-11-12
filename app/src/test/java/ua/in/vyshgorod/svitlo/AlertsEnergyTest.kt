@@ -9,6 +9,7 @@ import ua.`in`.vyshgorod.svitlo.data.DaySchedule
 import ua.`in`.vyshgorod.svitlo.data.Outage
 import ua.`in`.vyshgorod.svitlo.data.Regions
 import ua.`in`.vyshgorod.svitlo.data.ScheduleMath
+import ua.`in`.vyshgorod.svitlo.data.SvitloClient
 import ua.`in`.vyshgorod.svitlo.data.Snapshot
 
 class AlertsEnergyTest {
@@ -137,6 +138,55 @@ class AlertsEnergyTest {
         assertTrue(ScheduleMath.knownGroups(city, Regions.KYIV_OBLAST).isEmpty())
         assertEquals(12, ScheduleMath.knownGroups(null, Regions.KYIV_OBLAST).size)
         assertTrue(ScheduleMath.knownGroups(null, Regions.KYIV).isEmpty())
+    }
+
+    @Test
+    fun apiArraysUseSnakeCase() {
+        val clear = List(24) { 0 }.joinToString()
+        val tomorrowOff = (listOf(1) + List(23) { 0 }).joinToString()
+        val secondHalf = (listOf(3) + List(23) { 0 }).joinToString()
+        val shutdowns = """
+            [
+              {
+                "initiator":"city_dtek","queue":"2.1","updated":"2026-11-11T18:30:18.845Z",
+                "today":[$clear],"tomorrow":[$tomorrowOff],
+                "today_status":"NoShutdowns","tomorrow_status":"ScheduleApplies",
+                "today_date":"2026-11-12","tomorrow_date":"2026-11-13"
+              },
+              {
+                "initiator":"other_net","queue":"10.1","updated":"2026-11-11T18:30:18.845Z",
+                "today":[$secondHalf],"tomorrow":[],
+                "today_status":"ScheduleApplies","tomorrow_status":"WaitingForSchedule",
+                "today_date":"2026-11-12","tomorrow_date":"2026-11-13"
+              }
+            ]
+        """.trimIndent()
+        val suppliers = """
+            [
+              {"supplier_key":"city_uz","supplier_name":"Укрзалізниця","supplier_type":"uz","priority":1},
+              {"supplier_key":"city_dtek","supplier_name":"ДТЕК Київські електромережі","supplier_type":"oblenergo","priority":5}
+            ]
+        """.trimIndent()
+        val page = AlertsEnergy.parseApi(shutdowns, suppliers)
+        assertEquals(AlertsEnergy.SOURCE, page.source)
+        assertEquals("city_dtek", page.operatorId)
+        assertEquals("ДТЕК Київські електромережі", page.operators.single().name)
+        val today = page.days.single { it.day == "today" }
+        assertEquals(emptyList<Outage>(), today.groups["2.1"])
+        assertEquals("11.11.2026 20:30", today.groupUpdated["2.1"])
+        val tomorrow = page.days.single { it.day == "tomorrow" }
+        assertEquals(listOf(Outage(0, 60)), tomorrow.groups["2.1"])
+        val other = AlertsEnergy.parseApi(shutdowns, suppliers, "other_net")
+        assertEquals(listOf(Outage(30, 60)), other.days.single { it.day == "today" }.groups["10.1"])
+        assertTrue(AlertsEnergy.parseApi("nope", "[]").days.isEmpty())
+        assertTrue(SvitloClient.looksLimited(200, "Забагато запитів. Спробуйте пізніше."))
+        assertTrue(SvitloClient.looksLimited(429, "ok"))
+        assertTrue(SvitloClient.looksLimited(200, "Too many requests"))
+        assertFalse(SvitloClient.looksLimited(200, "<script id=\"ng-state\">Забагато запитів</script>"))
+        assertEquals(60_000L, SvitloClient.retryWaitMs("1"))
+        assertEquals(600_000L, SvitloClient.retryWaitMs(null))
+        assertEquals(1_800_000L, SvitloClient.retryWaitMs("99999"))
+        assertEquals("secret", SvitloClient.normalizeApiKey("  Bearer secret  "))
     }
 
     @Test

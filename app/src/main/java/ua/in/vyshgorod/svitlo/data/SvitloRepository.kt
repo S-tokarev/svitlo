@@ -44,7 +44,7 @@ object SvitloRepository {
     fun refreshBlocking(context: Context): Snapshot {
         val app = context.applicationContext
         val store = SvitloStore(app)
-        val parsed = ScheduleLoad.load(store.region(), store.operatorId())
+        val parsed = ScheduleLoad.load(store.region(), store.operatorId(), store.apiKey(), addressCache(app))
         val snapshot = Snapshot(
             fetchedAt = System.currentTimeMillis(),
             days = parsed.days,

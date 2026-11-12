@@ -26,8 +26,32 @@ enum AlertsEnergy {
     static func parse(html: String, operatorId: String = "") -> ParsedPage {
         guard let json = stateJson(html),
               let data = json.data(using: .utf8),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let rows = findRows(root) else { return emptyPage() }
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return emptyPage() }
+        return parseRoot(root, operatorId: operatorId)
+    }
+
+    /// Shutdown and supplier arrays from the documented JSON API. No network.
+    static func parseApi(shutdowns: String, suppliers: String, operatorId: String = "") -> ParsedPage {
+        guard let shutdownData = shutdowns.data(using: .utf8),
+              let shutdownRows = try? JSONSerialization.jsonObject(with: shutdownData) as? [Any] else {
+            return emptyPage()
+        }
+        let supplierRows: [Any]
+        if let data = suppliers.data(using: .utf8),
+           let rows = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+            supplierRows = rows
+        } else {
+            supplierRows = []
+        }
+        let root: [String: Any] = [
+            "shutdowns": ["data": shutdownRows],
+            "suppliers": ["data": supplierRows],
+        ]
+        return parseRoot(root, operatorId: operatorId)
+    }
+
+    private static func parseRoot(_ root: [String: Any], operatorId: String) -> ParsedPage {
+        guard let rows = findRows(root) else { return emptyPage() }
 
         let listed = suppliers(root)
         var initiators = Set<String>()
@@ -113,11 +137,11 @@ enum AlertsEnergy {
             guard let object = value as? [String: Any], let data = object["data"] as? [Any] else { continue }
             return data.compactMap { item in
                 guard let row = item as? [String: Any] else { return nil }
-                let id = text(row, "supplierKey", "slug")
+                let id = text(row, "supplierKey", "supplier_key", "slug")
                 if id.isEmpty { return nil }
                 let priority = (row["priority"] as? NSNumber)?.intValue ?? 0
-                let name = text(row, "supplierName")
-                return Supplier(id: id, name: name.isEmpty ? id : name, type: text(row, "supplierType"), priority: priority)
+                let name = text(row, "supplierName", "supplier_name")
+                return Supplier(id: id, name: name.isEmpty ? id : name, type: text(row, "supplierType", "supplier_type"), priority: priority)
             }
         }
         return []

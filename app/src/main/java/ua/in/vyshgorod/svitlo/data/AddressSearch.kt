@@ -13,8 +13,8 @@ import java.util.Locale
 
 /**
  * Street and house lookup for the whole Kyiv oblast, from the same directory
- * the DTEK Kyiv regional networks shutdown page uses. The schedule itself
- * comes from the public vyshgorod.in.ua/svitlo page.
+ * the DTEK Kyiv regional networks shutdown page uses. The same request
+ * also returns the oblast group schedule.
  */
 object AddressSearch {
     private const val AJAX = "https://www.dtek-krem.com.ua/ua/ajax"
@@ -74,6 +74,13 @@ object AddressSearch {
     fun houses(city: String, street: String, houseQuery: String?, cacheFile: File): Lookup {
         loadDirectory(cacheFile)
         return housesOn(city, street, houseQuery?.takeIf { it.isNotBlank() })
+    }
+
+    /** Group schedule for the whole oblast. Any published street returns the same fact. */
+    fun oblastSchedule(cacheFile: File): String {
+        val streets = loadDirectory(cacheFile)
+        val place = streets.entries.firstOrNull { it.value.isNotEmpty() } ?: error(L10n.directoryEmpty())
+        return synchronized(gate) { session.homes(place.key, place.value.first(), "01.01.2000 00:00") }
     }
 
     fun houseFilter(query: String): String? = parseQuery(query).house
@@ -311,7 +318,7 @@ object AddressSearch {
 
         fun streets(): String = call(mapOf("method" to "getStreets"))
 
-        fun homes(city: String, street: String): String = call(
+        fun homes(city: String, street: String, updateFact: String = ""): String = call(
             linkedMapOf(
                 "method" to "getHomeNum",
                 "data[0][name]" to "city",
@@ -319,7 +326,7 @@ object AddressSearch {
                 "data[1][name]" to "street",
                 "data[1][value]" to street,
                 "data[2][name]" to "updateFact",
-                "data[2][value]" to "",
+                "data[2][value]" to updateFact,
             ),
         )
 
@@ -369,6 +376,9 @@ object AddressSearch {
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
                 val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+                if (SvitloClient.looksLimited(code, text)) {
+                    throw RateLimited(SvitloClient.retryWaitMs(connection.getHeaderField("Retry-After")))
+                }
                 return Answer(code, text)
             } finally {
                 connection.disconnect()

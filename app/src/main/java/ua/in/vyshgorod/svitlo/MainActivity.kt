@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     onLanguage = ::setLanguage,
                     onRegion = ::setRegion,
                     onOperator = ::setOperator,
+                    onApiKey = ::setApiKey,
                     onRequestNotifications = ::requestNotifications,
                     onRequestBattery = ::requestBattery,
                     onOpenSource = {
@@ -121,6 +122,7 @@ class MainActivity : ComponentActivity() {
             language = L10n.language,
             region = store.region(),
             operatorId = store.operatorId(),
+            apiKey = store.apiKey(),
             notificationsGranted = notificationsGranted(),
             batteryFree = batteryFree(),
         )
@@ -265,6 +267,15 @@ class MainActivity : ComponentActivity() {
         if (id == current) return
         store.setOperator(id)
         screen = screen.copy(operatorId = id)
+        refresh()
+    }
+
+    private fun setApiKey(value: String) {
+        val store = SvitloStore(this)
+        val next = SvitloClient.normalizeApiKey(value)
+        if (next == store.apiKey()) return
+        store.setApiKey(next)
+        screen = screen.copy(apiKey = store.apiKey())
         refresh()
     }
 

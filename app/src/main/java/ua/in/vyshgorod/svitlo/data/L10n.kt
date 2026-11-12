@@ -209,6 +209,18 @@ object L10n {
         "Не удалось взять график с alerts.energy",
         "Could not load the schedule from alerts.energy",
     )
+    fun tooMany() = t(
+        "Сайт просить зачекати: забагато запитів. Попередній графік лишається на екрані.",
+        "Сайт просит подождать: слишком много запросов. Предыдущий график остаётся на экране.",
+        "The site asked us to wait: too many requests. The previous schedule stays on screen.",
+    )
+    fun apiKeySection() = t("Ключ API", "Ключ API", "API key")
+    fun apiKeyHint() = t(
+        "Свій ключ з кабінету alerts.energy. Тоді графік береться з API, а не зі сторінки, яку сайт блокує. Ключ лишається тільки на цьому пристрої.",
+        "Свой ключ из кабинета alerts.energy. Тогда график берётся из API, а не со страницы, которую сайт блокирует. Ключ остаётся только на этом устройстве.",
+        "Your key from the alerts.energy account. The schedule then comes from the API instead of the page the site blocks. The key stays on this device.",
+    )
+    fun saveKey() = t("Зберегти ключ", "Сохранить ключ", "Save key")
     fun fallbackCredit() = t(
         "Графік з alerts.energy: основний сайт не відповів",
         "График с alerts.energy: основной сайт не ответил",
@@ -218,6 +230,12 @@ object L10n {
         "Графік з alerts.energy",
         "График с alerts.energy",
         "Schedule from alerts.energy",
+    )
+    fun yasnoCredit() = t("Графік з YASNO", "График с YASNO", "Schedule from YASNO")
+    fun dtekScheduleCredit() = t(
+        "Графік з сайту ДТЕК",
+        "График с сайта ДТЕК",
+        "Schedule from the DTEK site",
     )
     fun emptyPage() = t("Сайт віддав порожню сторінку", "Сайт отдал пустую страницу", "The site returned an empty page")
     fun windowMissing() = t("Вікно застосунку не знайдено", "Окно приложения не найдено", "App window was not found")

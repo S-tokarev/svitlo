@@ -47,6 +47,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -55,6 +56,9 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import ua.`in`.vyshgorod.svitlo.data.AddressHit
 import ua.`in`.vyshgorod.svitlo.data.AlertsEnergy
+import ua.`in`.vyshgorod.svitlo.data.DtekSchedule
+import ua.`in`.vyshgorod.svitlo.data.Yasno
+import ua.`in`.vyshgorod.svitlo.data.SvitloClient
 import ua.`in`.vyshgorod.svitlo.data.AppLanguage
 import ua.`in`.vyshgorod.svitlo.data.GridOperator
 import ua.`in`.vyshgorod.svitlo.data.Regions
@@ -83,6 +87,7 @@ fun MainScreen(
     onLanguage: (AppLanguage) -> Unit,
     onRegion: (String) -> Unit,
     onOperator: (String) -> Unit,
+    onApiKey: (String) -> Unit,
     onRequestNotifications: () -> Unit,
     onRequestBattery: () -> Unit,
     onOpenSource: () -> Unit,
@@ -339,6 +344,37 @@ fun MainScreen(
                         onTheme(ThemeMode.Dark)
                     }
                 }
+            }
+        }
+
+        item {
+            Panel {
+                SectionTitle(L10n.apiKeySection())
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    L10n.apiKeyHint(),
+                    color = LocalSvitloColors.current.muted,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                var draft by remember(state.apiKey) { mutableStateOf(state.apiKey) }
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    visualTransformation = PasswordVisualTransformation(),
+                    placeholder = { Text(L10n.apiKeySection()) },
+                    colors = fieldColors(),
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { onApiKey(draft) },
+                    enabled = SvitloClient.normalizeApiKey(draft) != state.apiKey,
+                    shape = RoundedCornerShape(14.dp),
+                ) { Text(L10n.saveKey()) }
             }
         }
 
@@ -759,9 +795,13 @@ private fun SettingRow(title: String, checked: Boolean, onChecked: (Boolean) -> 
 }
 
 private fun scheduleCredit(snapshot: Snapshot?, region: String): String? {
-    if (snapshot?.source != AlertsEnergy.SOURCE) return null
-    if (!Regions.same(snapshot.region, region)) return null
-    return if (Regions.same(region, Regions.KYIV_OBLAST)) L10n.fallbackCredit() else L10n.alertsCredit()
+    if (snapshot == null || !Regions.same(snapshot.region, region)) return null
+    return when (snapshot.source) {
+        AlertsEnergy.SOURCE -> if (Regions.same(region, Regions.KYIV_OBLAST)) L10n.fallbackCredit() else L10n.alertsCredit()
+        Yasno.SOURCE -> L10n.yasnoCredit()
+        DtekSchedule.SOURCE -> L10n.dtekScheduleCredit()
+        else -> null
+    }
 }
 
 @Composable

@@ -34,8 +34,9 @@ enum ScheduleRefresh {
     static func run() async throws {
         let requestedRegion = AppStore.region()
         let requestedOperator = AppStore.operatorId()
-        let parsed = try await ScheduleLoad.load(region: requestedRegion, operatorId: requestedOperator)
-        if !Regions.same(requestedRegion, AppStore.region()) || AppStore.operatorId() != requestedOperator { return }
+        let requestedKey = AppStore.apiKey()
+        let parsed = try await ScheduleLoad.load(region: requestedRegion, operatorId: requestedOperator, apiKey: requestedKey)
+        if !Regions.same(requestedRegion, AppStore.region()) || AppStore.operatorId() != requestedOperator || AppStore.apiKey() != requestedKey { return }
         let previous = AppStore.loadSnapshot()
         let snapshot = Snapshot(
             fetchedAt: ScheduleMath.millis(Date()),
@@ -91,6 +92,7 @@ final class AppModel: ObservableObject {
     @Published var language = AppStore.resolvedLanguage()
     @Published var region = AppStore.region()
     @Published var operatorId = AppStore.operatorId()
+    @Published var apiKey = AppStore.apiKey()
     @Published var now = Date()
 
     init() {
@@ -261,6 +263,14 @@ final class AppModel: ObservableObject {
         if id == current { return }
         operatorId = id
         AppStore.setOperator(id)
+        Task { await refresh() }
+    }
+
+    func setApiKey(_ value: String) {
+        let next = SvitloClient.normalizeApiKey(value)
+        if next == apiKey { return }
+        apiKey = next
+        AppStore.setApiKey(next)
         Task { await refresh() }
     }
 
