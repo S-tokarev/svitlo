@@ -40,7 +40,7 @@ enum ScheduleMath {
         let scheduleDate = todaySchedule.flatMap { parseDate($0.updatedDate) }
         let group = selection.group
         let todayOutages = todaySchedule?.groups[group] ?? []
-        let tomorrowOutages = tomorrowSchedule?.groups[group] ?? []
+        let confirmedTomorrow = tomorrowSchedule?.groups[group].flatMap { $0.isEmpty ? nil : $0 }
         let today = startOfDay(date(from: now))
 
         var ranges: [Range] = []
@@ -49,13 +49,13 @@ enum ScheduleMath {
         if publishedToday, let scheduleDate {
             ranges += absoluteRanges(scheduleDate, todayOutages)
         }
-        if tomorrowSchedule?.groups[group] != nil && (publishedToday || publishedYesterday) {
+        if let confirmedTomorrow, publishedToday || publishedYesterday {
             let day = publishedYesterday ? today : adding(days: 1, to: scheduleDate ?? today)
-            ranges += absoluteRanges(day, tomorrowOutages)
+            ranges += absoluteRanges(day, confirmedTomorrow)
         }
         ranges = mergeTouching(ranges.sorted { $0.start < $1.start })
 
-        let coversToday = publishedToday || (publishedYesterday && tomorrowSchedule?.groups[group] != nil)
+        let coversToday = publishedToday || (publishedYesterday && confirmedTomorrow != nil)
         let plannedOn: Bool? = coversToday ? !ranges.contains { now >= $0.start && now < $0.end } : nil
 
         let live = snapshot.live.first { $0.id == group }
@@ -75,7 +75,7 @@ enum ScheduleMath {
                 }
             }
         }
-        let tomorrowKnown = tomorrowSchedule?.groups[group] != nil && (publishedToday || publishedYesterday)
+        let tomorrowKnown = confirmedTomorrow != nil && (publishedToday || publishedYesterday)
         let offUntil = nextOn.flatMap { isDayBoundary($0) && !tomorrowKnown ? $0 : nil }
         if offUntil != nil { nextOn = nil }
 
@@ -100,10 +100,10 @@ enum ScheduleMath {
 
         let shownToday: [Outage] = {
             if publishedToday { return todayOutages }
-            if publishedYesterday, tomorrowSchedule != nil { return tomorrowOutages }
+            if publishedYesterday, let confirmedTomorrow { return confirmedTomorrow }
             return []
         }()
-        let shownTomorrow = publishedToday && tomorrowSchedule != nil ? tomorrowOutages : []
+        let shownTomorrow = publishedToday ? (confirmedTomorrow ?? []) : []
         let updated = todaySchedule?.groupUpdated[group]?.nilIfBlank
             ?? [todaySchedule?.updatedDate, todaySchedule?.updatedTime]
                 .compactMap { $0?.nilIfBlank }
@@ -129,9 +129,10 @@ enum ScheduleMath {
         )
     }
 
-    /// A chart labeled tomorrow counts only when its date is the next calendar day.
+    /// A chart labeled tomorrow counts only when its date is the next calendar day and it has an outage.
     static func groupHasTomorrow(snapshot: Snapshot, group: String) -> Bool {
-        nextDay(snapshot)?.groups[group] != nil
+        guard let outages = nextDay(snapshot)?.groups[group] else { return false }
+        return !outages.isEmpty
     }
 
     private static let oblastGroups = [

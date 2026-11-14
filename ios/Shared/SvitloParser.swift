@@ -28,14 +28,19 @@ enum SvitloParser {
         var days = [today]
         if ordered.count > 1 {
             var tomorrow = ordered[1].schedule
-            tomorrow.day = "tomorrow"
-            days.append(tomorrow)
+            let kept = tomorrow.groups.filter { !$0.value.isEmpty }
+            if !kept.isEmpty {
+                tomorrow.day = "tomorrow"
+                tomorrow.groups = kept
+                tomorrow.groupUpdated = tomorrow.groupUpdated.filter { kept[$0.key] != nil }
+                days.append(tomorrow)
+            }
         }
         return ParsedPage(
             days: days,
             live: parseLive(html),
             houses: parseHouses(html),
-            tomorrowMissing: ordered.count < 2,
+            tomorrowMissing: !days.contains { $0.day == "tomorrow" },
             note: ""
         )
     }

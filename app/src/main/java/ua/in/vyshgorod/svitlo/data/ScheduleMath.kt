@@ -74,7 +74,7 @@ object ScheduleMath {
         val scheduleDate = todaySchedule?.updatedDate?.let(::parseDate)
         val group = selection.group
         val todayOutages = todaySchedule?.groups?.get(group).orEmpty()
-        val tomorrowOutages = tomorrowSchedule?.groups?.get(group).orEmpty()
+        val confirmedTomorrow = tomorrowSchedule?.groups?.get(group)?.takeIf { it.isNotEmpty() }
         val zoneNow = Instant.ofEpochMilli(now).atZone(zone)
         val today = zoneNow.toLocalDate()
 
@@ -82,15 +82,15 @@ object ScheduleMath {
         val publishedToday = scheduleDate == today && todaySchedule?.groups?.containsKey(group) == true
         val publishedYesterday = scheduleDate == today.minusDays(1)
         if (publishedToday) ranges += absoluteRanges(scheduleDate!!, todayOutages)
-        if (tomorrowSchedule?.groups?.containsKey(group) == true && (publishedToday || publishedYesterday)) {
+        if (confirmedTomorrow != null && (publishedToday || publishedYesterday)) {
             val date = if (publishedYesterday) today else scheduleDate!!.plusDays(1)
-            ranges += absoluteRanges(date, tomorrowOutages)
+            ranges += absoluteRanges(date, confirmedTomorrow)
         }
         val merged = mergeTouching(ranges.sortedBy { it.start })
         ranges.clear()
         ranges += merged
 
-        val coversToday = publishedToday || (publishedYesterday && tomorrowSchedule?.groups?.containsKey(group) == true)
+        val coversToday = publishedToday || (publishedYesterday && confirmedTomorrow != null)
         val plannedOn = if (coversToday) ranges.none { now >= it.start && now < it.end } else null
 
         val live = snapshot.live.firstOrNull { it.id == group }
@@ -110,7 +110,7 @@ object ScheduleMath {
                 }
             }
         }
-        val tomorrowKnown = tomorrowSchedule?.groups?.containsKey(group) == true && (publishedToday || publishedYesterday)
+        val tomorrowKnown = confirmedTomorrow != null && (publishedToday || publishedYesterday)
         val offUntil = if (nextOn != null && isDayBoundary(nextOn) && !tomorrowKnown) nextOn else null
         if (offUntil != null) nextOn = null
 
@@ -140,10 +140,10 @@ object ScheduleMath {
 
         val shownToday = when {
             publishedToday -> todayOutages
-            publishedYesterday && tomorrowSchedule != null -> tomorrowOutages
+            publishedYesterday && confirmedTomorrow != null -> confirmedTomorrow
             else -> emptyList()
         }
-        val shownTomorrow = if (publishedToday && tomorrowSchedule != null) tomorrowOutages else emptyList()
+        val shownTomorrow = if (publishedToday && confirmedTomorrow != null) confirmedTomorrow else emptyList()
 
         return PowerPicture(
             displayOn = displayOn,
@@ -209,9 +209,9 @@ object ScheduleMath {
         return "%02d:%02d".format(capped / 60, capped % 60)
     }
 
-    /** A chart labeled tomorrow counts only when its date is the next calendar day. */
+    /** A chart labeled tomorrow counts only when its date is the next calendar day and it has an outage. */
     fun groupHasTomorrow(snapshot: Snapshot, group: String): Boolean {
-        return nextDay(snapshot)?.groups?.containsKey(group) == true
+        return nextDay(snapshot)?.groups?.get(group)?.isNotEmpty() == true
     }
 
     fun knownGroups(snapshot: Snapshot?, region: String = Regions.KYIV_OBLAST): List<String> {

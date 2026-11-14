@@ -125,6 +125,21 @@ class SvitloParserTest {
     }
 
     @Test
+    fun blankTomorrowIsNotAFullDayOfPower() {
+        val now = LocalDate.of(2026, 11, 13).atTime(18, 0).atZone(ScheduleMath.zone).toInstant().toEpochMilli()
+        val today = listOf(Outage(0, 90))
+        val stored = snapshot(
+            now,
+            DaySchedule("today", "13 листопада", "13.11.2026", "", mapOf("2.1" to today)),
+            DaySchedule("tomorrow", "14 листопада", "14.11.2026", "", mapOf("2.1" to emptyList())),
+        )
+        val picture = ScheduleMath.picture(stored, Selection("2.1"), now)
+        assertEquals(today, picture.outagesToday)
+        assertTrue(picture.outagesTomorrow.isEmpty())
+        assertFalse(ScheduleMath.groupHasTomorrow(stored, "2.1"))
+    }
+
+    @Test
     fun emptyPageDoesNotInventASchedule() {
         val page = SvitloParser.parse("<html>challenge</html>")
         assertTrue(page.days.isEmpty())

@@ -153,10 +153,7 @@ fun DesktopApp(model: DesktopModel) {
             )
         }
         val tomorrow = picture?.outagesTomorrow
-        val tomorrowPublished = chart?.let {
-            ScheduleMath.groupHasTomorrow(it, model.selection.group)
-        } == true
-        if (picture != null && tomorrow != null && (tomorrow.isNotEmpty() || tomorrowPublished)) {
+        if (picture != null && !tomorrow.isNullOrEmpty()) {
             DayCard(L10n.tomorrow(), tomorrow, null, card, ink, muted, onText, offText)
         }
         GroupCard(model, card, card2, ink, muted, onText, offText)

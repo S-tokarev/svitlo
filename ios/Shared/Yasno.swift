@@ -69,7 +69,7 @@ enum Yasno {
         let todayDate = todays.compactMap(\.date).min()
         let todayGroups = sides(todays, date: todayDate, allowUndated: todayDate == nil)
         let tomorrowDate = tomorrows.compactMap(\.date).filter { todayDate == nil || $0 > todayDate! }.min()
-        let tomorrowGroups = sides(tomorrows, date: tomorrowDate, allowUndated: false)
+        let tomorrowGroups = sides(tomorrows, date: tomorrowDate, allowUndated: false).filter { !$0.value.isEmpty }
         var days: [DaySchedule] = []
         if let todayDate, !todayGroups.isEmpty, let date = date(from: todayDate) {
             days.append(day("today", date, todayGroups, stamps))

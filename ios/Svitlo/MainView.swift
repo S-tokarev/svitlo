@@ -109,8 +109,6 @@ struct MainView: View {
         }
         if let picture, !picture.outagesTomorrow.isEmpty {
             DayTrack(title: Copy.tomorrow(), outages: picture.outagesTomorrow, nowMin: nil, palette: palette)
-        } else if let snapshot = chart, ScheduleMath.groupHasTomorrow(snapshot: snapshot, group: model.selection.group) {
-            DayTrack(title: Copy.tomorrow(), outages: [], nowMin: nil, palette: palette)
         }
     }
 

@@ -89,7 +89,7 @@ enum AlertsEnergy {
                 remember(messages, into: &notes, seen: &seenNotes)
             }
             let tomorrowFollows = tomorrow != nil && (today == nil || isAfter(tomorrow!, today!))
-            if tomorrowFollows, let tomorrowPlan, tomorrowGroups[queue] == nil {
+            if tomorrowFollows, let tomorrowPlan, !tomorrowPlan.isEmpty, tomorrowGroups[queue] == nil {
                 tomorrowGroups[queue] = Piece(outages: tomorrowPlan, stamp: stamp)
                 remember(messages, into: &notes, seen: &seenNotes)
             }

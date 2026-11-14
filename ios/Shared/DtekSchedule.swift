@@ -32,8 +32,11 @@ enum DtekSchedule {
         if let today, let groups = byDate[today], !groups.isEmpty, let date = date(from: today) {
             schedules.append(day("today", date, groups, stamp))
         }
-        if let tomorrow, let groups = byDate[tomorrow], !groups.isEmpty, let date = date(from: tomorrow) {
-            schedules.append(day("tomorrow", date, groups, stamp))
+        if let tomorrow, let groups = byDate[tomorrow], let date = date(from: tomorrow) {
+            let published = groups.filter { !$0.value.isEmpty }
+            if !published.isEmpty {
+                schedules.append(day("tomorrow", date, published, stamp))
+            }
         }
         if schedules.isEmpty { return emptyPage() }
         return ParsedPage(

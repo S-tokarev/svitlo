@@ -63,6 +63,19 @@ final class LogicTests: XCTestCase {
         XCTAssertFalse(ScheduleMath.groupHasTomorrow(snapshot: stored, group: "2.1"))
     }
 
+    func testBlankTomorrowIsNotAFullDayOfPower() {
+        let now = kyiv(2026, 11, 13, 18, 0)
+        let today = [Outage(startMin: 0, endMin: 90)]
+        let stored = snapshot(now, days: [
+            DaySchedule(day: "today", label: "13 листопада", updatedDate: "13.11.2026", updatedTime: "", groups: ["2.1": today], groupUpdated: [:]),
+            DaySchedule(day: "tomorrow", label: "14 листопада", updatedDate: "14.11.2026", updatedTime: "", groups: ["2.1": []], groupUpdated: [:]),
+        ])
+        let picture = ScheduleMath.picture(snapshot: stored, selection: Selection(group: "2.1"), now: now)
+        XCTAssertEqual(picture.outagesToday, today)
+        XCTAssertEqual(picture.outagesTomorrow, [])
+        XCTAssertFalse(ScheduleMath.groupHasTomorrow(snapshot: stored, group: "2.1"))
+    }
+
     func testAlertsEnergyMapsDtekHoursAndIgnoresRailway() {
         let railway = alertsRow(initiator: "kyivska_oblast_uz", queue: "1.1", today: Array(repeating: 1, count: 24), todayStatus: "ScheduleApplies")
         let main = alertsRow(
@@ -89,10 +102,8 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(today?.groups["1.1"], [Outage(startMin: 0, endMin: 90), Outage(startMin: 120, endMin: 180)])
         XCTAssertEqual(today?.groups["1.2"], [Outage(startMin: 0, endMin: 60)])
         XCTAssertEqual(today?.groupUpdated["1.1"], "11.11.2026 20:30")
-        let tomorrow = page.days.first { $0.day == "tomorrow" }
-        XCTAssertEqual(tomorrow?.groups["1.1"], [])
-        XCTAssertNil(tomorrow?.groups["1.2"])
-        XCTAssertFalse(page.tomorrowMissing)
+        XCTAssertNil(page.days.first { $0.day == "tomorrow" })
+        XCTAssertTrue(page.tomorrowMissing)
         XCTAssertEqual(page.source, AlertsEnergy.source)
         XCTAssertEqual(page.note, "За наказом НЕК Укренерго діють стабілізаційні відключення.")
         let waiting = AlertsEnergy.parse(html: alertsPage(alertsRow(queue: "4.2", today: [], todayStatus: "WaitingForSchedule")))
@@ -234,6 +245,13 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(page.region, Regions.kyivOblast)
         XCTAssertEqual(page.operatorId, AlertsEnergy.kyivOblastDtek)
         XCTAssertTrue(DtekSchedule.parse(#"{"result":false}"#).days.isEmpty)
+        let clearTomorrow = """
+        {"result":true,"fact":{"update":"13.11.2026 20:47","today":1794434400,"data":{"1794434400":{"GPV2.1":{"1":"no"}},"1794520800":{"GPV2.1":{"1":"yes"},"GPV3.1":{"5":"no"}}}}}
+        """
+        let cleared = DtekSchedule.parse(clearTomorrow)
+        XCTAssertEqual(cleared.days.first { $0.day == "tomorrow" }?.groups["3.1"], [Outage(startMin: 240, endMin: 300)])
+        XCTAssertNil(cleared.days.first { $0.day == "tomorrow" }?.groups["2.1"])
+        XCTAssertFalse(cleared.tomorrowMissing)
     }
 
     func testEmptyPageDoesNotInventASchedule() {

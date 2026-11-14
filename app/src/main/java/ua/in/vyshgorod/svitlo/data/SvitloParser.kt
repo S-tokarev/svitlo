@@ -41,7 +41,17 @@ object SvitloParser {
         }
         val ordered = chosen.entries.sortedBy { it.key }.map { it.value.schedule }
         val today = ordered.firstOrNull() ?: return emptyPage()
-        val tomorrow = ordered.getOrNull(1)
+        val tomorrow = ordered.getOrNull(1)?.let { schedule ->
+            val kept = schedule.groups.filterValues { it.isNotEmpty() }
+            if (kept.isEmpty()) {
+                null
+            } else {
+                schedule.copy(
+                    groups = kept,
+                    groupUpdated = schedule.groupUpdated.filterKeys { it in kept },
+                )
+            }
+        }
         return ParsedPage(
             days = listOfNotNull(today.copy(day = "today"), tomorrow?.copy(day = "tomorrow")),
             live = parseLive(html),

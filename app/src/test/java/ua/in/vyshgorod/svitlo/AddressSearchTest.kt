@@ -72,6 +72,14 @@ class AddressSearchTest {
     fun csrfCookieHoldsTheSecondSerializedString() {
         val cookie = "25ab%3A2%3A%7Bi%3A0%3Bs%3A15%3A%22_csrf-dtek-krem%22%3Bi%3A1%3Bs%3A32%3A%22yOTG-jz1o4Y2vMdssuTULtIJJc0lGGZa%22%3B%7D"
         assertEquals("yOTG-jz1o4Y2vMdssuTULtIJJc0lGGZa", AddressSearch.csrfToken(cookie))
+        val jar = listOf(
+            "# Netscape HTTP Cookie File",
+            listOf("#HttpOnly_www.dtek-krem.com.ua", "FALSE", "/", "TRUE", "0", "_csrf-dtek-krem", cookie).joinToString("\t"),
+            listOf(".dtek-krem.com.ua", "TRUE", "/", "TRUE", "0", "visid_incap_2398465", "abc").joinToString("\t"),
+        ).joinToString("\n")
+        val stored = AddressSearch.netscapeCookies(jar)
+        assertEquals(listOf("visid_incap_2398465"), stored.filter { it.first != "_csrf-dtek-krem" }.map { it.first })
+        assertEquals("yOTG-jz1o4Y2vMdssuTULtIJJc0lGGZa", AddressSearch.csrfToken(stored.first { it.first == "_csrf-dtek-krem" }.second))
         val mask = ByteArray(3) { index -> (index + 1).toByte() }
         assertEquals(8, AddressSearch.maskToken("abc", mask).length)
     }

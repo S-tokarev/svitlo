@@ -10,6 +10,7 @@ import java.net.URLEncoder
 import java.security.SecureRandom
 import java.util.Base64
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 /**
  * Street and house lookup for the whole Kyiv oblast, from the same directory
@@ -127,6 +128,17 @@ object AddressSearch {
     internal fun csrfToken(cookieValue: String): String? {
         val decoded = URLDecoder.decode(cookieValue, "UTF-8")
         return csrfPattern.find(decoded)?.groupValues?.get(1)
+    }
+
+    /** curl's Netscape jar. A later response often omits a cookie that is already stored. */
+    internal fun netscapeCookies(text: String): List<Pair<String, String>> {
+        return text.lineSequence().mapNotNull { raw ->
+            val line = if (raw.startsWith("#HttpOnly_")) raw.removePrefix("#HttpOnly_") else raw
+            if (line.isBlank() || line.startsWith("#")) return@mapNotNull null
+            val parts = line.split('\t')
+            if (parts.size < 7 || parts[5].isEmpty()) return@mapNotNull null
+            parts[5] to parts[6]
+        }.toList()
     }
 
     internal fun maskToken(token: String, mask: ByteArray = random.generateSeed(token.length)): String {
@@ -335,6 +347,8 @@ object AddressSearch {
             var answer = post(form, withToken = true)
             if (answer.code == 400) {
                 token = null
+                cookies.clear()
+                cookieJar.delete()
                 ensureToken()
                 answer = post(form, withToken = true)
             }
@@ -345,14 +359,33 @@ object AddressSearch {
 
         private fun ensureToken() {
             if (token != null) return
+            readJar()
+            if (token != null) return
             post(mapOf("method" to "getStreets"), withToken = false)
+            readJar()
             if (token == null) error(L10n.dtekNoKey())
         }
 
         private fun post(form: Map<String, String>, withToken: Boolean): Answer {
+            val first = send(form, withToken)
+            // The edge answers the first call with a redirect and a cookie. The same POST then reaches DTEK.
+            if (first.code in 300..399) return send(form, withToken)
+            return first
+        }
+
+        private val cookieJar = File(System.getProperty("java.io.tmpdir"), "svitlo-dtek-cookies.txt")
+
+        private fun send(form: Map<String, String>, withToken: Boolean): Answer {
             val body = form.entries.joinToString("&") { (key, value) ->
                 URLEncoder.encode(key, "UTF-8") + "=" + URLEncoder.encode(value, "UTF-8")
             }
+            val curl = curlProgram()
+            // Imperva rejects the Java HTTP client. curl uses the system TLS stack, which is accepted.
+            if (curl != null) return sendCurl(curl, body, withToken)
+            return sendJava(body, withToken)
+        }
+
+        private fun sendJava(body: String, withToken: Boolean): Answer {
             val connection = (URL(AJAX).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 doOutput = true
@@ -372,8 +405,8 @@ object AddressSearch {
             }
             try {
                 connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-                absorbCookies(connection)
                 val code = connection.responseCode
+                absorbCookies(connection)
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
                 val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
                 if (SvitloClient.looksLimited(code, text)) {
@@ -385,28 +418,99 @@ object AddressSearch {
             }
         }
 
-        private fun absorbCookies(connection: HttpURLConnection) {
-            var index = 0
-            while (true) {
-                val key = connection.getHeaderFieldKey(index)
-                if (key == null) {
-                    if (index == 0) {
-                        index += 1
-                        continue
-                    }
-                    break
+        private fun sendCurl(program: String, body: String, withToken: Boolean): Answer {
+            if (!cookieJar.isFile) cookieJar.writeText("# Netscape HTTP Cookie File\n")
+            val bodyFile = File.createTempFile("svitlo-dtek-", ".txt")
+            val args = mutableListOf(
+                program, "-sS", "--http1.1", "--max-redirs", "0", "--max-time", "30",
+                "-D", "-", "-o", bodyFile.absolutePath,
+                "-c", cookieJar.absolutePath, "-b", cookieJar.absolutePath,
+                "-X", "POST", AJAX,
+                "-H", "User-Agent: $USER_AGENT",
+                "-H", "Accept: application/json, text/javascript, */*; q=0.01",
+                "-H", "Content-Type: application/x-www-form-urlencoded; charset=UTF-8",
+                "-H", "X-Requested-With: XMLHttpRequest",
+                "-H", "Origin: $ORIGIN",
+                "-H", "Referer: $REFERER",
+                "--data-binary", body,
+            )
+            if (withToken) {
+                args.add("-H")
+                args.add("X-CSRF-Token: ${maskToken(token ?: error(L10n.noRequestKey()))}")
+            }
+            try {
+                val sink = File(if (System.getProperty("os.name").orEmpty().contains("Windows", ignoreCase = true)) "NUL" else "/dev/null")
+                val process = ProcessBuilder(args).redirectError(sink).start()
+                val headers = process.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                if (!process.waitFor(35, TimeUnit.SECONDS)) {
+                    process.destroyForcibly()
+                    error(L10n.dtekSilent())
                 }
-                if (key.equals("Set-Cookie", ignoreCase = true)) {
-                    val header = connection.getHeaderField(index).orEmpty()
-                    val pair = header.substringBefore(';')
-                    val name = pair.substringBefore('=').trim()
-                    val value = pair.substringAfter('=', "")
-                    if (name.isNotEmpty()) cookies[name] = value
-                    if (name == "_csrf-dtek-krem") token = csrfToken(value) ?: token
-                }
-                index += 1
+                val code = httpStatus(headers)
+                rememberCookies(headers)
+                readJar()
+                val text = bodyFile.readText(Charsets.UTF_8)
+                val retry = headers.lineSequence()
+                    .firstOrNull { it.startsWith("Retry-After:", ignoreCase = true) }
+                    ?.substringAfter(":")
+                    ?.trim()
+                if (SvitloClient.looksLimited(code, text)) throw RateLimited(SvitloClient.retryWaitMs(retry))
+                return Answer(code, text)
+            } finally {
+                bodyFile.delete()
             }
         }
+
+        private fun absorbCookies(connection: HttpURLConnection) {
+            val headers = connection.headerFields.entries
+                .filter { it.key?.equals("Set-Cookie", ignoreCase = true) == true }
+                .flatMap { it.value.orEmpty() }
+            headers.forEach(::rememberCookie)
+        }
+
+        private fun rememberCookies(headerDump: String) {
+            headerDump.lineSequence().forEach { line ->
+                if (line.startsWith("Set-Cookie:", ignoreCase = true)) rememberCookie(line.substringAfter(":").trim())
+            }
+        }
+
+        private fun rememberCookie(header: String) {
+            val pair = header.substringBefore(';')
+            val name = pair.substringBefore('=').trim()
+            val value = pair.substringAfter('=', "")
+            if (name.isNotEmpty()) cookies[name] = value
+            if (name == "_csrf-dtek-krem") token = csrfToken(value) ?: token
+        }
+
+        private fun readJar() {
+            if (!cookieJar.isFile) return
+            AddressSearch.netscapeCookies(cookieJar.readText(Charsets.UTF_8)).forEach { (name, value) ->
+                rememberCookie("$name=$value")
+            }
+        }
+
+        private fun httpStatus(headerDump: String): Int {
+            val line = headerDump.lineSequence().lastOrNull { it.startsWith("HTTP/") } ?: return 0
+            return line.split(" ").getOrNull(1)?.toIntOrNull() ?: 0
+        }
+    }
+
+    private fun curlProgram(): String? {
+        if (onAndroid()) return null
+        val os = System.getProperty("os.name").orEmpty()
+        if (os.contains("Windows", ignoreCase = true)) {
+            return listOf(File("C:\\Windows\\Sysnative\\curl.exe"), File("C:\\Windows\\System32\\curl.exe"))
+                .firstOrNull { it.isFile }
+                ?.absolutePath
+        }
+        return File("/usr/bin/curl").takeIf { it.isFile }?.absolutePath
+    }
+
+    private fun onAndroid(): Boolean = try {
+        Class.forName("android.os.Build")
+        true
+    } catch (_: ClassNotFoundException) {
+        false
     }
 
     private data class Answer(val code: Int, val body: String)

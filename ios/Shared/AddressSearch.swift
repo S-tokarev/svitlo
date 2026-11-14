@@ -257,6 +257,18 @@ private extension NSRegularExpression {
     }
 }
 
+/// Keeps the DTEK cookie challenge as a POST. A followed redirect would drop the body.
+private final class NoRedirect: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest
+    ) async -> URLRequest? {
+        nil
+    }
+}
+
 actor AddressDirectory {
     static let shared = AddressDirectory()
 
@@ -385,6 +397,15 @@ actor AddressDirectory {
     }
 
     private func post(_ body: Data, withToken: Bool) async throws -> (code: Int, body: String) {
+        let first = try await send(body, withToken: withToken)
+        // The edge answers the first call with a redirect and a cookie. The same POST then reaches DTEK.
+        if (300...399).contains(first.code) {
+            return try await send(body, withToken: withToken)
+        }
+        return first
+    }
+
+    private func send(_ body: Data, withToken: Bool) async throws -> (code: Int, body: String) {
         var request = URLRequest(url: ajax)
         request.httpMethod = "POST"
         request.httpBody = body
@@ -395,7 +416,7 @@ actor AddressDirectory {
         request.setValue("https://www.dtek-krem.com.ua", forHTTPHeaderField: "Origin")
         request.setValue("https://www.dtek-krem.com.ua/ua/shutdowns", forHTTPHeaderField: "Referer")
         if withToken, let token { request.setValue(AddressMatch.maskToken(token, mask: randomMask(count: token.utf8.count)), forHTTPHeaderField: "X-CSRF-Token") }
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request, delegate: NoRedirect())
         guard let http = response as? HTTPURLResponse else { throw SvitloError.message(Copy.dtekSilent()) }
         absorbCookies(http)
         let text = String(data: data, encoding: .utf8) ?? ""

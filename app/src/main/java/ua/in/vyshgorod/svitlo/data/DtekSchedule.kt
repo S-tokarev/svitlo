@@ -43,9 +43,10 @@ object DtekSchedule {
         }
         val today = byDate.keys.firstOrNull { it == todayMarker } ?: byDate.keys.minOrNull()
         val tomorrow = byDate.keys.filter { today == null || it.isAfter(today) }.minOrNull()
+        val tomorrowGroups = tomorrow?.let { byDate.getValue(it).filterValues { outages -> outages.isNotEmpty() } }.orEmpty()
         val days = listOfNotNull(
             today?.takeIf { byDate[it].orEmpty().isNotEmpty() }?.let { day("today", it, byDate.getValue(it), stamp) },
-            tomorrow?.takeIf { byDate[it].orEmpty().isNotEmpty() }?.let { day("tomorrow", it, byDate.getValue(it), stamp) },
+            tomorrow?.takeIf { tomorrowGroups.isNotEmpty() }?.let { day("tomorrow", it, tomorrowGroups, stamp) },
         )
         if (days.isEmpty()) return emptyPage()
         return ParsedPage(

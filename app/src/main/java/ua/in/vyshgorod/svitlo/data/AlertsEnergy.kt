@@ -72,7 +72,9 @@ object AlertsEnergy {
                 notes += messages
             }
             val tomorrowFollows = tomorrow != null && (today == null || tomorrow.isAfter(today))
-            if (tomorrowFollows && tomorrowPlan != null && tomorrowGroups.putIfAbsent(queue, Piece(tomorrowPlan, stamp)) == null) {
+            if (tomorrowFollows && tomorrowPlan != null && tomorrowPlan.isNotEmpty() &&
+                tomorrowGroups.putIfAbsent(queue, Piece(tomorrowPlan, stamp)) == null
+            ) {
                 notes += messages
             }
         }

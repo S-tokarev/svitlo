@@ -37,6 +37,35 @@ class DtekScheduleTest {
     }
 
     @Test
+    fun allClearTomorrowIsNotAFullDayOfPower() {
+        val today = 1794434400L
+        val tomorrow = today + 86_400L
+        val page = DtekSchedule.parse(
+            """
+            {
+              "result": true,
+              "fact": {
+                "update": "13.11.2026 20:47",
+                "today": $today,
+                "data": {
+                  "$today": {"GPV2.1": {"1": "no"}},
+                  "$tomorrow": {
+                    "GPV2.1": {"1": "yes", "2": "yes"},
+                    "GPV3.1": {"5": "no"}
+                  }
+                }
+              }
+            }
+            """.trimIndent(),
+        )
+        val next = page.days.single { it.day == "tomorrow" }
+        assertEquals(listOf("3.1"), next.groups.keys.toList())
+        assertEquals(listOf(Outage(240, 300)), next.groups["3.1"])
+        assertFalse(next.groups.containsKey("2.1"))
+        assertFalse(page.tomorrowMissing)
+    }
+
+    @Test
     fun missingFactIsNotASchedule() {
         val page = DtekSchedule.parse("""{"result":true,"data":{}}""")
         assertTrue(page.days.isEmpty())

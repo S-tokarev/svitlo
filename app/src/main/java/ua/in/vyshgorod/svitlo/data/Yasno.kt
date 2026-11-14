@@ -63,7 +63,7 @@ object Yasno {
         val tomorrowDate = tomorrows.mapNotNull { it.date }
             .filter { todayDate == null || it.isAfter(todayDate) }
             .minOrNull()
-        val tomorrowGroups = sides(tomorrows, tomorrowDate, allowUndated = false)
+        val tomorrowGroups = sides(tomorrows, tomorrowDate, allowUndated = false).filterValues { it.isNotEmpty() }
         val days = listOfNotNull(
             todayDate?.takeIf { todayGroups.isNotEmpty() }?.let { day("today", it, todayGroups, stamps) },
             tomorrowDate?.takeIf { tomorrowGroups.isNotEmpty() }?.let { day("tomorrow", it, tomorrowGroups, stamps) },

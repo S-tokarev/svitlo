@@ -105,9 +105,6 @@ fun MainScreen(
         ScheduleMath.picture(it, state.selection, now)
     }
     val groups = ScheduleMath.knownGroups(state.snapshot, state.region)
-    val tomorrowPublished = chart?.let {
-        ScheduleMath.groupHasTomorrow(it, state.selection.group)
-    } == true
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(LocalSvitloColors.current.paper),
@@ -187,10 +184,6 @@ fun MainScreen(
                     outages = picture.outagesTomorrow,
                     nowMin = null,
                 )
-            }
-        } else if (tomorrowPublished) {
-            item {
-                DayScheduleCard(title = L10n.tomorrow(), outages = emptyList(), nowMin = null)
             }
         }
 

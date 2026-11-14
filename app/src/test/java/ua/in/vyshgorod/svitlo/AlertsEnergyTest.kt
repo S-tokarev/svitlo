@@ -55,11 +55,8 @@ class AlertsEnergyTest {
         assertEquals(listOf(Outage(0, 60)), today.groups["1.2"])
         assertFalse(today.groups.containsKey("2.1"))
         assertEquals("11.11.2026 20:30", today.groupUpdated["1.1"])
-        val tomorrow = page.days.single { it.day == "tomorrow" }
-        assertEquals("13.11.2026", tomorrow.updatedDate)
-        assertEquals(emptyList<Outage>(), tomorrow.groups["1.1"])
-        assertFalse(tomorrow.groups.containsKey("1.2"))
-        assertFalse(page.tomorrowMissing)
+        assertTrue(page.tomorrowMissing)
+        assertTrue(page.days.none { it.day == "tomorrow" })
         assertEquals(AlertsEnergy.SOURCE, page.source)
         assertEquals("За наказом НЕК Укренерго діють стабілізаційні відключення.", page.note)
     }
